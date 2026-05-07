@@ -41,6 +41,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('adb:disconnect', (_e, serial: string) => adbService.disconnect(serial))
   ipcMain.handle('adb:start-tracking', () => adbService.startTracking())
   ipcMain.handle('adb:stop-tracking', () => adbService.stopTracking())
+  ipcMain.handle('adb:ls', (_e, serial: string, path: string) => adbService.listFiles(serial, path))
 }
 
 app.whenReady().then(() => {

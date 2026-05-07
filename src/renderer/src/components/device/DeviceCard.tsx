@@ -1,9 +1,16 @@
-import { Smartphone, Usb, Wifi, Shield } from 'lucide-react'
+import { useState } from 'react'
+import { Smartphone, Usb, Wifi, Shield, Unplug, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useDeviceStore } from '@/stores/deviceStore'
+import { Button } from '@/components/ui/button'
 
-export function DeviceCard(): JSX.Element {
-  const { devices, current, adbStatus, setCurrent } = useDeviceStore()
+interface DeviceCardProps {
+  onOpenWifiDialog?: () => void
+}
+
+export function DeviceCard({ onOpenWifiDialog }: DeviceCardProps): JSX.Element {
+  const { devices, current, adbStatus, setCurrent, disconnectDevice, refreshDevices } = useDeviceStore()
+  const [hoveredSerial, setHoveredSerial] = useState<string | null>(null)
 
   const stateIcon = (state: string): JSX.Element => {
     if (state === 'device') return <Usb className="h-3.5 w-3.5 text-green-500" />
@@ -25,6 +32,15 @@ export function DeviceCard(): JSX.Element {
         <Smartphone className="h-4 w-4 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">设备</span>
         <span className="ml-auto text-xs text-muted-foreground">{devices.length}</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5"
+          onClick={() => refreshDevices()}
+          title="刷新设备"
+        >
+          <RefreshCw className="h-3 w-3" />
+        </Button>
       </div>
 
       {adbStatus && !adbStatus.available && (
@@ -34,31 +50,61 @@ export function DeviceCard(): JSX.Element {
       )}
 
       {devices.map((d) => (
-        <button
+        <div
           key={d.serial}
           className={cn(
-            'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
+            'group relative flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
             current?.serial === d.serial ? 'border-primary/40 bg-primary/10' : 'border-transparent hover:bg-muted'
           )}
-          onClick={() => setCurrent(d)}
+          onMouseEnter={() => setHoveredSerial(d.serial)}
+          onMouseLeave={() => setHoveredSerial(null)}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-            <Smartphone className="h-4 w-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">{d.model || d.serial}</div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {stateIcon(d.state)}
-              <span>{stateLabel(d.state)}</span>
+          <button
+            className="flex flex-1 items-center gap-3"
+            onClick={() => setCurrent(d)}
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+              <Smartphone className="h-4 w-4" />
             </div>
-          </div>
-        </button>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">{d.model || d.serial}</div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {stateIcon(d.state)}
+                <span>{stateLabel(d.state)}</span>
+              </div>
+            </div>
+          </button>
+
+          {hoveredSerial === d.serial && d.state === 'device' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-2 h-6 w-6 text-destructive hover:bg-destructive/10"
+              onClick={(e) => { e.stopPropagation(); disconnectDevice(d.serial) }}
+              title="断开连接"
+            >
+              <Unplug className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
       ))}
 
       {devices.length === 0 && adbStatus?.available && (
         <div className="rounded-lg border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
           未检测到设备
         </div>
+      )}
+
+      {adbStatus?.available && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full text-xs"
+          onClick={onOpenWifiDialog}
+        >
+          <Wifi className="mr-1.5 h-3 w-3" />
+          无线连接
+        </Button>
       )}
     </div>
   )

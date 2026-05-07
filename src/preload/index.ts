@@ -13,7 +13,9 @@ const api = {
   stopDeviceTracking: (): void => { ipcRenderer.invoke('adb:stop-tracking') },
   onDeviceChanged: (callback: (devices: { serial: string; state: string; model?: string }[]) => void): void => {
     ipcRenderer.on('adb:device-changed', (_event, devices) => callback(devices))
-  }
+  },
+  listFiles: (serial: string, path: string): Promise<{ name: string; path: string; size: number; modified: string; type: string; permission: string }[]> =>
+    ipcRenderer.invoke('adb:ls', serial, path)
 }
 
 contextBridge.exposeInMainWorld('api', api)

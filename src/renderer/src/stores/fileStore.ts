@@ -5,7 +5,7 @@ export interface FileItem {
   path: string
   size: number
   modified: string
-  type: 'file' | 'folder'
+  type: 'file' | 'folder' | 'symlink'
   permission: string
 }
 
@@ -15,26 +15,36 @@ interface FileStore {
   selected: FileItem | null
   history: string[]
   historyIndex: number
+  loading: boolean
+  error: string | null
   setCurrentPath: (path: string) => void
   setFiles: (files: FileItem[]) => void
   setSelected: (file: FileItem | null) => void
+  setLoading: (loading: boolean) => void
+  setError: (error: string | null) => void
   pushHistory: (path: string) => void
   goBack: () => string | null
   goForward: () => string | null
   canGoBack: () => boolean
   canGoForward: () => boolean
+  navigateTo: (path: string, serial: string) => Promise<void>
+  loadCurrentPath: (serial: string) => Promise<void>
 }
 
 export const useFileStore = create<FileStore>((set, get) => ({
-  currentPath: '/sdcard',
+  currentPath: '/storage/emulated/0',
   files: [],
   selected: null,
-  history: ['/sdcard'],
+  history: ['/storage/emulated/0'],
   historyIndex: 0,
+  loading: false,
+  error: null,
 
   setCurrentPath: (path) => set({ currentPath: path }),
   setFiles: (files) => set({ files }),
   setSelected: (file) => set({ selected: file }),
+  setLoading: (loading) => set({ loading }),
+  setError: (error) => set({ error }),
 
   pushHistory: (path) => {
     const { history, historyIndex } = get()
@@ -60,5 +70,24 @@ export const useFileStore = create<FileStore>((set, get) => ({
   },
 
   canGoBack: () => get().historyIndex > 0,
-  canGoForward: () => get().historyIndex < get().history.length - 1
+  canGoForward: () => get().historyIndex < get().history.length - 1,
+
+  navigateTo: async (path, serial) => {
+    const { currentPath, pushHistory } = get()
+    if (path === currentPath) return
+    set({ currentPath: path, selected: null, error: null })
+    pushHistory(path)
+    await get().loadCurrentPath(serial)
+  },
+
+  loadCurrentPath: async (serial) => {
+    const { currentPath } = get()
+    set({ loading: true, error: null })
+    try {
+      const entries = await window.api.listFiles(serial, currentPath)
+      set({ files: entries, loading: false })
+    } catch (err) {
+      set({ files: [], loading: false, error: (err as Error).message || '加载失败' })
+    }
+  }
 }))

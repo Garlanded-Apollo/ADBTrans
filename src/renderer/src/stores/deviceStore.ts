@@ -18,6 +18,7 @@ interface DeviceStore {
   refreshDevices: () => Promise<void>
   startTracking: () => void
   connectDevice: (host: string) => Promise<{ success: boolean; message: string }>
+  disconnectDevice: (serial: string) => Promise<{ success: boolean; message: string }>
 }
 
 export const useDeviceStore = create<DeviceStore>((set, get) => ({
@@ -66,6 +67,16 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
   connectDevice: async (host) => {
     const result = await window.api.connectDevice(host)
     if (result.success) await get().refreshDevices()
+    return result
+  },
+
+  disconnectDevice: async (serial) => {
+    const result = await window.api.disconnectDevice(serial)
+    if (result.success) {
+      const { current } = get()
+      if (current?.serial === serial) set({ current: null })
+      await get().refreshDevices()
+    }
     return result
   }
 }))

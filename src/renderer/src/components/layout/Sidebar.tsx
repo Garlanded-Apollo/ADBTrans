@@ -3,29 +3,35 @@ import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DeviceCard } from '@/components/device/DeviceCard'
 import { useFileStore } from '@/stores/fileStore'
+import { useDeviceStore } from '@/stores/deviceStore'
 import { cn } from '@/lib/utils'
 
 const QUICK_PATHS = [
-  { label: '内部存储', path: '/sdcard', icon: HardDrive },
-  { label: 'Download', path: '/sdcard/Download', icon: Download },
-  { label: 'DCIM', path: '/sdcard/DCIM', icon: Star },
-  { label: 'Pictures', path: '/sdcard/Pictures', icon: Star },
-  { label: 'Documents', path: '/sdcard/Documents', icon: FolderOpen }
+  { label: '内部存储', path: '/storage/emulated/0', icon: HardDrive },
+  { label: 'Download', path: '/storage/emulated/0/Download', icon: Download },
+  { label: 'DCIM', path: '/storage/emulated/0/DCIM', icon: Star },
+  { label: 'Pictures', path: '/storage/emulated/0/Pictures', icon: Star },
+  { label: 'Documents', path: '/storage/emulated/0/Documents', icon: FolderOpen }
 ]
 
-export function Sidebar(): JSX.Element {
-  const { setCurrentPath, pushHistory, currentPath } = useFileStore()
+interface SidebarProps {
+  onOpenWifiDialog?: () => void
+}
+
+export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
+  const { currentPath, navigateTo } = useFileStore()
+  const { current } = useDeviceStore()
 
   const navigate = (path: string): void => {
-    setCurrentPath(path)
-    pushHistory(path)
+    if (!current?.serial) return
+    navigateTo(path, current.serial)
   }
 
   return (
     <aside className="flex w-[260px] flex-col border-r bg-muted/20">
       <ScrollArea className="flex-1">
         <div className="space-y-4 p-3">
-          <DeviceCard />
+          <DeviceCard onOpenWifiDialog={onOpenWifiDialog} />
           <Separator />
           <div className="space-y-1">
             <div className="flex items-center gap-2 px-1">

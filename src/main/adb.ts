@@ -13,6 +13,15 @@ export interface AdbCheckResult {
   path: string
 }
 
+export interface FileEntry {
+  name: string
+  path: string
+  size: number
+  modified: string
+  type: 'file' | 'folder' | 'symlink'
+  permission: string
+}
+
 const COMMON_PATHS = [
   '/opt/homebrew/bin/adb',
   '/usr/local/bin/adb',
@@ -74,6 +83,78 @@ function parseDevices(output: string): DeviceInfo[] {
     devices.push(info)
   }
   return devices
+}
+
+const MONTHS: Record<string, string> = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' }
+
+function normalizeDate(datePart: string, timeOrYear: string): string {
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return `${datePart}T${timeOrYear}:00`
+  // MMM DD HH:MM or MMM DD YYYY (e.g. "May  7 10:30" or "May  7 2026")
+  const m = datePart.match(/^([A-Z][a-z]{2})\s+(\d{1,2})$/)
+  if (m) {
+    const month = MONTHS[m[1]] || '01'
+    const day = m[2].padStart(2, '0')
+    const time = timeOrYear.includes(':') ? timeOrYear : '00:00'
+    const year = timeOrYear.includes(':') ? new Date().getFullYear() : timeOrYear
+    return `${year}-${month}-${day}T${time}:00`
+  }
+  return `${datePart}T${timeOrYear}:00`
+}
+
+function parseLsLine(line: string, parentPath: string): FileEntry | null {
+  if (!line || line.startsWith('total')) return null
+
+  const parts = line.split(/\s+/)
+  if (parts.length < 7) return null
+
+  const perm = parts[0]
+  if (perm.length !== 10 || !/^[dls\-]/.test(perm)) {
+    console.log('[parseLsLine] BAD PERM:', JSON.stringify(perm), 'len:', perm.length)
+    return null
+  }
+
+  const sizeStr = parts[4]
+  const dateRaw = `${parts[5]} ${parts[6]}`
+  const rawName = parts.slice(7).join(' ')
+  if (!rawName) {
+    console.log('[parseLsLine] EMPTY NAME, parts:', parts.length, parts)
+    return null
+  }
+
+  console.log('[parseLsLine] OK:', { perm, sizeStr, dateRaw, rawName })
+
+  const symlinkMatch = rawName.match(/^(.+)\s+->\s+.+$/)
+  const name = (symlinkMatch ? symlinkMatch[1] : rawName).trim()
+  if (name === '.' || name === '..' || name.startsWith('/')) return null
+
+  const [datePart, timePart] = dateRaw.split(/\s+/)
+  const modified = normalizeDate(datePart, timePart || '00:00')
+
+  let type: FileEntry['type'] = 'file'
+  if (perm.startsWith('d')) type = 'folder'
+  else if (perm.startsWith('l')) type = 'symlink'
+
+  const parent = parentPath.replace(/\/+$/, '') || '/'
+  const size = parseInt(sizeStr, 10) || 0
+
+  return { name, path: parent === '/' ? `/${name}` : `${parent}/${name}`, size, modified, type, permission: perm.slice(1) }
+}
+
+function parseLsOutput(output: string, parentPath: string): FileEntry[] {
+  console.log('[parseLsOutput] raw output:\n' + output)
+  const entries: FileEntry[] = []
+  for (const line of output.split('\n')) {
+    const entry = parseLsLine(line.trim(), parentPath)
+    if (entry) entries.push(entry)
+  }
+  console.log('[parseLsOutput] parsed entries:', entries.length)
+  entries.sort((a, b) => {
+    if (a.type === 'folder' && b.type !== 'folder') return -1
+    if (a.type !== 'folder' && b.type === 'folder') return 1
+    return a.name.localeCompare(b.name)
+  })
+  return entries
 }
 
 export class AdbService extends EventEmitter {
@@ -145,6 +226,13 @@ export class AdbService extends EventEmitter {
 
   stopTracking(): void {
     if (this.tracker) { this.tracker.kill(); this.tracker = null }
+  }
+
+  async listFiles(serial: string, path: string): Promise<FileEntry[]> {
+    const cleanPath = path.replace(/\/+$/, '') || '/'
+    console.log('[listFiles] serial:', serial, 'path:', cleanPath)
+    const output = await execAdb(['-s', serial, 'shell', 'ls', '-la', cleanPath], 30000)
+    return parseLsOutput(output, cleanPath)
   }
 }
 
