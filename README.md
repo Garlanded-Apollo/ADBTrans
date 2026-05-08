@@ -150,4 +150,4 @@ ADBTrans/
 
 ## License
 
-MIT
+[GPL v3](LICENSE)
