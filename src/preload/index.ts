@@ -15,7 +15,30 @@ const api = {
     ipcRenderer.on('adb:device-changed', (_event, devices) => callback(devices))
   },
   listFiles: (serial: string, path: string): Promise<{ name: string; path: string; size: number; modified: string; type: string; permission: string }[]> =>
-    ipcRenderer.invoke('adb:ls', serial, path)
+    ipcRenderer.invoke('adb:ls', serial, path),
+
+  pullFile: (id: string, serial: string, remotePath: string, localPath: string): void => {
+    ipcRenderer.invoke('adb:pull', id, serial, remotePath, localPath)
+  },
+  pushFile: (id: string, serial: string, localPath: string, remotePath: string): void => {
+    ipcRenderer.invoke('adb:push', id, serial, localPath, remotePath)
+  },
+  cancelTransfer: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('adb:cancel-transfer', id),
+  selectDirectory: (): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:select-directory'),
+  selectFiles: (): Promise<string[] | null> =>
+    ipcRenderer.invoke('dialog:select-files'),
+
+  onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void): void => {
+    ipcRenderer.on('adb:transfer-progress', (_event, data) => callback(data))
+  },
+  onTransferDone: (callback: (data: { id: string }) => void): void => {
+    ipcRenderer.on('adb:transfer-done', (_event, data) => callback(data))
+  },
+  onTransferError: (callback: (data: { id: string; error: string }) => void): void => {
+    ipcRenderer.on('adb:transfer-error', (_event, data) => callback(data))
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)

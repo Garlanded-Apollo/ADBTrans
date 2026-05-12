@@ -10,6 +10,7 @@ import { AdbWarning } from '@/components/device/AdbWarning'
 import { WirelessConnectDialog } from '@/components/device/WirelessConnectDialog'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useFileStore } from '@/stores/fileStore'
+import { initTransferListeners } from '@/stores/queueStore'
 
 function App(): JSX.Element {
   const { checkAdb, adbStatus, current } = useDeviceStore()
@@ -18,6 +19,7 @@ function App(): JSX.Element {
 
   useEffect(() => {
     checkAdb()
+    initTransferListeners()
   }, [])
 
   useEffect(() => {

@@ -21,6 +21,10 @@ interface DeviceStore {
   disconnectDevice: (serial: string) => Promise<{ success: boolean; message: string }>
 }
 
+function findFirstConnected(devices: Device[]): Device | null {
+  return devices.find((d) => d.state === 'device') || null
+}
+
 export const useDeviceStore = create<DeviceStore>((set, get) => ({
   devices: [],
   current: null,
@@ -49,7 +53,11 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
       const devices = await window.api.getDevices()
       set({ devices })
       const { current } = get()
-      if (current && !devices.find((d) => d.serial === current.serial)) set({ current: null })
+      if (current && !devices.find((d) => d.serial === current.serial)) {
+        set({ current: findFirstConnected(devices) })
+      } else if (!current) {
+        set({ current: findFirstConnected(devices) })
+      }
     } catch { /* silent */ }
   },
 
@@ -60,7 +68,16 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
     window.api.onDeviceChanged((devices) => {
       set({ devices })
       const { current } = get()
-      if (current && !devices.find((d) => d.serial === current.serial)) set({ current: null })
+      const connected = devices.filter((d) => d.state === 'device')
+
+      if (current) {
+        const stillConnected = connected.find((d) => d.serial === current.serial)
+        if (!stillConnected) {
+          set({ current: connected[0] || null })
+        }
+      } else if (connected.length > 0) {
+        set({ current: connected[0] })
+      }
     })
   },
 
@@ -73,8 +90,11 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
   disconnectDevice: async (serial) => {
     const result = await window.api.disconnectDevice(serial)
     if (result.success) {
-      const { current } = get()
-      if (current?.serial === serial) set({ current: null })
+      const { current, devices } = get()
+      if (current?.serial === serial) {
+        const remaining = devices.filter((d) => d.serial !== serial && d.state === 'device')
+        set({ current: remaining[0] || null })
+      }
       await get().refreshDevices()
     }
     return result

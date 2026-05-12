@@ -12,6 +12,16 @@ interface ElectronAPI {
   stopDeviceTracking: () => void
   onDeviceChanged: (callback: (devices: DeviceInfo[]) => void) => void
   listFiles: (serial: string, path: string) => Promise<FileEntry[]>
+
+  pullFile: (id: string, serial: string, remotePath: string, localPath: string) => void
+  pushFile: (id: string, serial: string, localPath: string, remotePath: string) => void
+  cancelTransfer: (id: string) => Promise<boolean>
+  selectDirectory: () => Promise<string | null>
+  selectFiles: () => Promise<string[] | null>
+
+  onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void) => void
+  onTransferDone: (callback: (data: { id: string }) => void) => void
+  onTransferError: (callback: (data: { id: string; error: string }) => void) => void
 }
 
 interface Window { api: ElectronAPI }

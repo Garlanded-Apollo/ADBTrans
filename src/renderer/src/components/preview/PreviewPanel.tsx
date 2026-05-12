@@ -29,7 +29,7 @@ export function PreviewPanel(): JSX.Element {
 
   if (!selected) {
     return (
-      <div className="flex w-[340px] flex-col items-center justify-center border-l text-muted-foreground">
+      <div className="flex h-full w-full flex-col items-center justify-center border-l text-muted-foreground">
         <File className="mb-2 h-8 w-8 opacity-30" />
         <span className="text-xs">选择文件以预览</span>
       </div>
@@ -39,7 +39,7 @@ export function PreviewPanel(): JSX.Element {
   const previewType = selected.type === 'folder' ? 'unknown' : getPreviewType(selected.name)
 
   return (
-    <div className="flex w-[340px] flex-col border-l">
+    <div className="flex h-full w-full flex-col border-l">
       <Tabs defaultValue="preview" className="flex flex-1 flex-col">
         <div className="border-b px-3 pt-2">
           <TabsList className="h-8">

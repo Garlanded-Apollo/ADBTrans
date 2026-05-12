@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Smartphone, Usb, Wifi, Shield, Unplug, RefreshCw } from 'lucide-react'
+import { Smartphone, Usb, Wifi, Shield, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { Button } from '@/components/ui/button'
@@ -9,14 +8,13 @@ interface DeviceCardProps {
 }
 
 export function DeviceCard({ onOpenWifiDialog }: DeviceCardProps): JSX.Element {
-  const { devices, current, adbStatus, setCurrent, disconnectDevice, refreshDevices } = useDeviceStore()
-  const [hoveredSerial, setHoveredSerial] = useState<string | null>(null)
+  const { devices, current, adbStatus, setCurrent, refreshDevices } = useDeviceStore()
 
   const stateIcon = (state: string): JSX.Element => {
-    if (state === 'device') return <Usb className="h-3.5 w-3.5 text-green-500" />
-    if (state === 'offline') return <Wifi className="h-3.5 w-3.5 text-yellow-500" />
-    if (state === 'unauthorized') return <Shield className="h-3.5 w-3.5 text-red-500" />
-    return <Wifi className="h-3.5 w-3.5 text-muted-foreground" />
+    if (state === 'device') return <Usb className="h-3 w-3 text-green-500" />
+    if (state === 'offline') return <Wifi className="h-3 w-3 text-yellow-500" />
+    if (state === 'unauthorized') return <Shield className="h-3 w-3 text-red-500" />
+    return <Wifi className="h-3 w-3 text-muted-foreground" />
   }
 
   const stateLabel = (state: string): string => {
@@ -53,39 +51,24 @@ export function DeviceCard({ onOpenWifiDialog }: DeviceCardProps): JSX.Element {
         <div
           key={d.serial}
           className={cn(
-            'group relative flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
+            'flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors cursor-pointer',
             current?.serial === d.serial ? 'border-primary/40 bg-primary/10' : 'border-transparent hover:bg-muted'
           )}
-          onMouseEnter={() => setHoveredSerial(d.serial)}
-          onMouseLeave={() => setHoveredSerial(null)}
+          onClick={() => setCurrent(d)}
         >
-          <button
-            className="flex flex-1 items-center gap-3"
-            onClick={() => setCurrent(d)}
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-              <Smartphone className="h-4 w-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">{d.model || d.serial}</div>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {stateIcon(d.state)}
-                <span>{stateLabel(d.state)}</span>
-              </div>
-            </div>
-          </button>
-
-          {hoveredSerial === d.serial && d.state === 'device' && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 h-6 w-6 text-destructive hover:bg-destructive/10"
-              onClick={(e) => { e.stopPropagation(); disconnectDevice(d.serial) }}
-              title="断开连接"
-            >
-              <Unplug className="h-3 w-3" />
-            </Button>
-          )}
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <Smartphone className="h-4 w-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate">{d.model || d.serial}</div>
+            {d.model && (
+              <div className="text-[11px] text-muted-foreground truncate">{d.serial}</div>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+            {stateIcon(d.state)}
+            <span>{stateLabel(d.state)}</span>
+          </div>
         </div>
       ))}
 

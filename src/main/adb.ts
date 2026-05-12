@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'child_process'
 import { EventEmitter } from 'events'
+import { basename } from 'path'
 
 export interface DeviceInfo {
   serial: string
@@ -20,6 +21,19 @@ export interface FileEntry {
   modified: string
   type: 'file' | 'folder' | 'symlink'
   permission: string
+}
+
+export interface TransferProgress {
+  id: string
+  percent: number
+  speed: string
+  transferred: string
+}
+
+export interface TransferCallbacks {
+  onProgress: (percent: number, speed: string) => void
+  onDone: () => void
+  onError: (err: string) => void
 }
 
 const COMMON_PATHS = [
@@ -161,6 +175,7 @@ export class AdbService extends EventEmitter {
   private tracker: ReturnType<typeof spawn> | null = null
   private _devices: DeviceInfo[] = []
   private _adbCheckResult: AdbCheckResult | null = null
+  private activeTransfers = new Map<string, ReturnType<typeof spawn>>()
 
   get devices(): DeviceInfo[] { return this._devices }
 
@@ -202,26 +217,78 @@ export class AdbService extends EventEmitter {
 
   startTracking(): void {
     if (this.tracker) return
-    this.tracker = spawn(findAdb(), ['track-devices'], { stdio: ['ignore', 'pipe', 'pipe'] })
+    console.log('[track-devices] starting...')
+    const adbPath = findAdb()
+    this.tracker = spawn(adbPath, ['track-devices'], { stdio: ['ignore', 'pipe', 'pipe'] })
     let buffer = ''
-    this.tracker.stdout?.on('data', (data: Buffer) => {
-      buffer += data.toString()
-      if (buffer.includes('\n\n')) {
-        const devices: DeviceInfo[] = []
-        for (const raw of buffer.split('\n')) {
-          const line = raw.trim()
-          if (!line || line === 'List of devices attached') continue
-          const parts = line.split('\t')
-          if (parts.length < 2) continue
-          devices.push({ serial: parts[0], state: parseState(parts[1]) })
+
+    const parseTrackOutput = (raw: string): Map<string, DeviceInfo['state']> => {
+      const stateMap = new Map<string, DeviceInfo['state']>()
+      let i = 0
+      while (i < raw.length) {
+        const lenHex = raw.slice(i, i + 4)
+        const len = parseInt(lenHex, 16)
+        if (isNaN(len) || len <= 0) { i++; continue }
+        i += 4
+        const entry = raw.slice(i, i + len)
+        i += len
+        const parts = entry.trim().split('\t')
+        if (parts.length >= 2) {
+          stateMap.set(parts[0], parseState(parts[1]))
         }
-        buffer = ''
+      }
+      return stateMap
+    }
+
+    this.tracker.stdout?.on('data', async (data: Buffer) => {
+      const text = data.toString()
+      console.log('[track-devices] stdout:', JSON.stringify(text))
+      buffer += text
+
+      const stateMap = parseTrackOutput(buffer)
+      buffer = ''
+
+      if (stateMap.size === 0) {
+        this._devices = []
+        this.emit('devices-changed', [])
+        return
+      }
+
+      try {
+        const fullOutput = await execAdb(['devices', '-l'])
+        const fullDevices = parseDevices(fullOutput)
+        const merged: DeviceInfo[] = []
+        for (const [serial, state] of stateMap) {
+          const full = fullDevices.find((d) => d.serial === serial)
+          merged.push({ serial, state, model: full?.model })
+        }
+        this._devices = merged
+        console.log('[track-devices] merged devices:', merged)
+        this.emit('devices-changed', merged)
+      } catch {
+        const devices: DeviceInfo[] = []
+        for (const [serial, state] of stateMap) {
+          const existing = this._devices.find((d) => d.serial === serial)
+          devices.push({ serial, state, model: existing?.model })
+        }
         this._devices = devices
         this.emit('devices-changed', devices)
       }
     })
-    this.tracker.on('error', () => this.stopTracking())
-    this.tracker.on('exit', () => { this.tracker = null })
+
+    this.tracker.stderr?.on('data', (data: Buffer) => {
+      console.log('[track-devices] stderr:', data.toString())
+    })
+
+    this.tracker.on('error', (err) => {
+      console.log('[track-devices] error:', err.message)
+      this.stopTracking()
+    })
+
+    this.tracker.on('exit', (code) => {
+      console.log('[track-devices] exit code:', code)
+      this.tracker = null
+    })
   }
 
   stopTracking(): void {
@@ -233,6 +300,66 @@ export class AdbService extends EventEmitter {
     console.log('[listFiles] serial:', serial, 'path:', cleanPath)
     const output = await execAdb(['-s', serial, 'shell', 'ls', '-la', cleanPath], 30000)
     return parseLsOutput(output, cleanPath)
+  }
+
+  private parseProgress(line: string): { percent: number } | null {
+    const m = line.match(/\[\s*(\d+)%\]/)
+    if (m) return { percent: parseInt(m[1], 10) }
+    return null
+  }
+
+  startTransfer(
+    id: string,
+    args: string[],
+    callbacks: TransferCallbacks
+  ): void {
+    const adbPath = findAdb()
+    const proc = spawn(adbPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    this.activeTransfers.set(id, proc)
+
+    let lastPercent = 0
+    const startTime = Date.now()
+
+    const processOutput = (data: Buffer): void => {
+      const text = data.toString()
+      for (const line of text.split('\n')) {
+        const progress = this.parseProgress(line.trim())
+        if (progress && progress.percent !== lastPercent) {
+          lastPercent = progress.percent
+          const elapsed = (Date.now() - startTime) / 1000
+          const speed = elapsed > 0 ? `${(lastPercent / elapsed * 100).toFixed(0)}%` : '--'
+          callbacks.onProgress(lastPercent, speed)
+        }
+      }
+    }
+
+    proc.stdout?.on('data', processOutput)
+    proc.stderr?.on('data', processOutput)
+
+    proc.on('close', (code) => {
+      this.activeTransfers.delete(id)
+      if (code === 0) {
+        callbacks.onProgress(100, '--')
+        callbacks.onDone()
+      } else if (code !== null) {
+        callbacks.onError(`进程退出，代码: ${code}`)
+      }
+    })
+
+    proc.on('error', (err) => {
+      this.activeTransfers.delete(id)
+      callbacks.onError(err.message)
+    })
+  }
+
+  cancelTransfer(id: string): boolean {
+    const proc = this.activeTransfers.get(id)
+    if (proc) {
+      proc.kill()
+      this.activeTransfers.delete(id)
+      return true
+    }
+    return false
   }
 }
 

@@ -1,10 +1,12 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { adbService } from './adb'
 
+let mainWindow: BrowserWindow | null = null
+
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 900,
@@ -17,7 +19,7 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow.show())
+  mainWindow.on('ready-to-show', () => mainWindow!.show())
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -30,7 +32,7 @@ function createWindow(): void {
   }
 
   adbService.on('devices-changed', (devices) => {
-    mainWindow.webContents.send('adb:device-changed', devices)
+    mainWindow?.webContents.send('adb:device-changed', devices)
   })
 }
 
@@ -42,6 +44,56 @@ function registerIpcHandlers(): void {
   ipcMain.handle('adb:start-tracking', () => adbService.startTracking())
   ipcMain.handle('adb:stop-tracking', () => adbService.stopTracking())
   ipcMain.handle('adb:ls', (_e, serial: string, path: string) => adbService.listFiles(serial, path))
+
+  ipcMain.handle('adb:pull', (_e, id: string, serial: string, remotePath: string, localPath: string) => {
+    adbService.startTransfer(id, ['-s', serial, 'pull', remotePath, localPath], {
+      onProgress: (percent, speed) => {
+        mainWindow?.webContents.send('adb:transfer-progress', { id, percent, speed })
+      },
+      onDone: () => {
+        mainWindow?.webContents.send('adb:transfer-done', { id })
+      },
+      onError: (err) => {
+        mainWindow?.webContents.send('adb:transfer-error', { id, error: err })
+      }
+    })
+  })
+
+  ipcMain.handle('adb:push', (_e, id: string, serial: string, localPath: string, remotePath: string) => {
+    adbService.startTransfer(id, ['-s', serial, 'push', localPath, remotePath], {
+      onProgress: (percent, speed) => {
+        mainWindow?.webContents.send('adb:transfer-progress', { id, percent, speed })
+      },
+      onDone: () => {
+        mainWindow?.webContents.send('adb:transfer-done', { id })
+      },
+      onError: (err) => {
+        mainWindow?.webContents.send('adb:transfer-error', { id, error: err })
+      }
+    })
+  })
+
+  ipcMain.handle('adb:cancel-transfer', (_e, id: string) => {
+    return adbService.cancelTransfer(id)
+  })
+
+  ipcMain.handle('dialog:select-directory', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:select-files', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths
+  })
 }
 
 app.whenReady().then(() => {
