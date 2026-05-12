@@ -143,7 +143,7 @@ ADBTrans/
 |------|------|------|
 | M1 | Electron + React 项目搭建，ADB 检测，设备列表 | ✅ |
 | M2 | 路径导航、文件列表渲染、adb shell ls 解析 | ✅ |
-| M3 | pull / push 实现，进度展示，传输队列 | 🔲 |
+| M3 | pull / push 实现，进度展示，传输队列 | ✅ |
 | M4 | 图片和文本预览，语法高亮 | 🔲 |
 | M5 | 拖拽传输、增删改操作、无线连接、书签 | 🔲 |
 | M6 | electron-builder 配置，macOS + Windows 安装包 | 🔲 |
