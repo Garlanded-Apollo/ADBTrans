@@ -7,23 +7,36 @@
 ### 设备管理
 - **ADB 环境检测** — 启动时自动检测系统是否已安装 ADB，未安装则引导安装
 - **设备自动发现** — 实时追踪 USB / Wi-Fi 连接的 Android 设备
-- **设备列表展示** — 顶部下拉菜单切换设备，显示连接状态
+- **设备列表展示** — 顶部下拉菜单切换设备，显示连接状态和型号
 - **无线连接** — 支持输入 IP:Port 进行 `adb connect`
 
 ### 文件浏览
 - **路径导航栏** — 支持手动输入路径跳转，前进/后退/主页
 - **目录列表** — 展示文件名、大小、修改时间、类型、权限
-- **快捷路径** — 侧边栏预设内部存储、Download、DCIM 等常用目录
+- **列宽调整** — 拖拽调整各列宽度
+- **文件搜索** — 当前目录下按文件名搜索
+- **多选操作** — 长按或 Shift+click 多选文件
 - **路径历史** — 记录访问过的路径，支持前进/后退
 
-### 文件传输（开发中）
-- 手机 → 电脑 / 电脑 → 手机双向传输
-- 传输进度展示、传输队列管理
+### 快捷路径与收藏
+- **快捷路径** — 侧边栏预设常用目录（内部存储、Download、DCIM 等）
+- **路径收藏** — 工具栏收藏按钮一键收藏当前路径，支持自定义名称
+- **管理收藏** — 齿轮图标打开管理对话框，支持添加/编辑/删除快捷路径
+- **数据持久化** — 收藏数据保存在 localStorage，重启不丢失
 
-### 文件预览（开发中）
-- 图片预览（jpg/png/gif/webp）
-- 文本预览 + 语法高亮
-- 文件信息面板
+### 文件传输
+- **双向传输** — 手机 → 电脑 / 电脑 → 手机
+- **文件夹传输** — 支持递归下载整个文件夹
+- **传输进度** — 实时显示进度条、速度
+- **传输队列** — 多任务排队执行，支持取消，最新任务置顶显示
+- **拖拽上传** — 侧边栏拖拽文件上传到手机
+
+### 文件预览
+- **图片预览** — 支持 jpg/png/gif/webp/bmp，选中即预览
+- **图片缩略图** — 文件列表中图片显示 32x32 缩略图
+- **文本预览** — 支持 txt/log/md/json/xml/html/css/js/ts/py 等文本文件
+- **文件信息** — 显示文件名、路径、大小、修改时间、权限等详情
+- **智能布局** — 图片：预览+信息合并显示；文本：预览/信息分 Tab；其他：仅信息
 
 ## 技术栈
 
@@ -68,36 +81,40 @@ ADBTrans/
 ├── src/
 │   ├── main/                 # Electron 主进程
 │   │   ├── index.ts          # 窗口创建、IPC 注册
-│   │   └── adb.ts            # ADB 命令封装
+│   │   └── adb.ts            # ADB 命令封装（ls/pull/push/cat 等）
 │   ├── preload/              # 预加载脚本
-│   │   ├── index.ts          # API 桥接
+│   │   ├── index.ts          # API 桥接（contextBridge）
 │   │   └── index.d.ts        # 类型声明
 │   └── renderer/             # React 前端
 │       └── src/
-│           ├── App.tsx
-│           ├── main.tsx
-│           ├── globals.css
-│           ├── lib/utils.ts
-│           ├── stores/       # Zustand 状态管理
-│           │   ├── deviceStore.ts
-│           │   ├── fileStore.ts
-│           │   └── queueStore.ts
+│           ├── App.tsx        # 根组件，布局编排
+│           ├── main.tsx       # 入口
+│           ├── globals.css    # 全局样式
+│           ├── lib/utils.ts   # 工具函数
+│           ├── stores/        # Zustand 状态管理
+│           │   ├── deviceStore.ts    # 设备连接状态
+│           │   ├── fileStore.ts      # 文件列表、选中、历史
+│           │   ├── queueStore.ts     # 传输队列
+│           │   └── bookmarkStore.ts  # 快捷路径收藏
 │           └── components/
-│               ├── layout/   # 布局组件
-│               │   ├── TitleBar.tsx
-│               │   ├── Sidebar.tsx
-│               │   └── Toolbar.tsx
-│               ├── device/   # 设备相关
-│               │   ├── DeviceCard.tsx
-│               │   ├── AdbWarning.tsx
-│               │   └── WirelessConnectDialog.tsx
-│               ├── file/     # 文件列表
-│               │   └── FileTable.tsx
-│               ├── preview/  # 文件预览
-│               │   └── PreviewPanel.tsx
-│               ├── queue/    # 传输队列
-│               │   └── TransferQueue.tsx
-│               └── ui/       # 基础 UI 组件
+│               ├── layout/          # 布局组件
+│               │   ├── TitleBar.tsx        # 顶栏（设备选择）
+│               │   ├── Sidebar.tsx         # 侧边栏（快捷路径、收藏管理）
+│               │   └── Toolbar.tsx         # 工具栏（导航、上传/下载、收藏）
+│               ├── device/          # 设备相关
+│               │   ├── DeviceCard.tsx      # 设备卡片
+│               │   ├── AdbWarning.tsx      # ADB 未安装提示
+│               │   └── WirelessConnectDialog.tsx  # 无线连接对话框
+│               ├── file/            # 文件浏览
+│               │   ├── FileTable.tsx       # 文件列表表格（多选、搜索、列宽调整）
+│               │   └── Thumbnail.tsx       # 图片缩略图组件
+│               ├── preview/         # 文件预览
+│               │   └── PreviewPanel.tsx    # 预览面板（图片/文本/信息）
+│               ├── queue/           # 传输队列
+│               │   └── TransferQueue.tsx   # 队列面板（进度、状态、操作）
+│               ├── bookmark/        # 书签管理
+│               │   └── BookmarkDialog.tsx  # 收藏管理对话框
+│               └── ui/              # 基础 UI 组件（shadcn/ui）
 ├── resources/                # 应用图标等资源
 ├── electron.vite.config.ts
 ├── tailwind.config.js
@@ -110,30 +127,31 @@ ADBTrans/
 +----------------------------------------------------------+
 | [设备下拉]  Pixel 6              已连接         [设置]    |
 +----------------------------------------------------------+
-| 手机路径: [/storage/emulated/0/Download]  [跳转] [书签]  |
+| [←] [→] [🏠] [/storage/emulated/0] [🔍] [⭐] [↑] [↓] [🗑] |
 +--------------------------+-------------------------------+
-|  DCIM/                   |  文件预览 / 信息面板          |
-|  Documents/              |                               |
-|  Download/               |  [图片预览]                   |
-|  README.md        12KB   |  或                           |
-|  photo.jpg        3.5MB  |  [文本预览 + 语法高亮]        |
-|                           |                               |
-|  [上传到手机]             |  名称: photo.jpg              |
-|  [下载到电脑]             |  大小: 3.5 MB                 |
-|  [删除]  [重命名]         |  修改时间: 2026-05-07 14:30   |
+| ⚙ 快捷路径              |                               |
+|  内部存储                |         图片预览               |
+|  Download               |     ┌─────────────┐           |
+|  DCIM                   |     │   photo.jpg  │           |
+|  Pictures               |     └─────────────┘           |
+|  Documents              |  ─────────────────────────     |
+|                         |  名称   photo.jpg              |
+|  最近访问                |  大小   3.5 MB                 |
+|                         |  修改时间 2026-05-07 14:30     |
+| [拖拽文件到此处上传]      |                               |
 +--------------------------+-------------------------------+
-| [传输队列] ████████░░ 75%   photo.jpg  2.6MB/s           |
+| [传输队列] ↑ 最新在上    ████████░░ 75%  2.6MB/s         |
 +----------------------------------------------------------+
 ```
 
 ## 数据流
 
 ```
-用户操作 → React UI
-         → Electron IPC (invoke)
-         → Main Process (Node.js)
-         → child_process.exec(`adb -s <serial> <command>`)
-         → ADB Daemon (手机端)
+用户操作 → React UI (Zustand Store)
+         → Electron IPC (window.api.invoke)
+         → Main Process (ipcMain.handle)
+         → ADB Service (child_process.spawn/execFile)
+         → ADB Daemon (Android 设备)
          → 结果返回 → IPC → UI 更新
 ```
 
@@ -143,9 +161,9 @@ ADBTrans/
 |------|------|------|
 | M1 | Electron + React 项目搭建，ADB 检测，设备列表 | ✅ |
 | M2 | 路径导航、文件列表渲染、adb shell ls 解析 | ✅ |
-| M3 | pull / push 实现，进度展示，传输队列 | 🔲 |
-| M4 | 图片和文本预览，语法高亮 | 🔲 |
-| M5 | 拖拽传输、增删改操作、无线连接、书签 | 🔲 |
+| M3 | pull / push 实现，进度展示，传输队列 | ✅ |
+| M4 | 图片和文本预览，图片缩略图，文件信息面板 | ✅ |
+| M5 | 拖拽传输、增删改操作、无线连接、书签收藏 | ✅ |
 | M6 | electron-builder 配置，macOS + Windows 安装包 | 🔲 |
 
 ## License
