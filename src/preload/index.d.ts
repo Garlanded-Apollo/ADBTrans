@@ -16,6 +16,8 @@ interface ElectronAPI {
   pullFile: (id: string, serial: string, remotePath: string, localPath: string) => void
   pushFile: (id: string, serial: string, localPath: string, remotePath: string) => void
   cancelTransfer: (id: string) => Promise<boolean>
+  getFileContent: (serial: string, remotePath: string) => Promise<string>
+  getFileBase64: (serial: string, remotePath: string) => Promise<string>
   selectDirectory: () => Promise<string | null>
   selectFiles: () => Promise<string[] | null>
 

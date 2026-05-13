@@ -77,6 +77,14 @@ function registerIpcHandlers(): void {
     return adbService.cancelTransfer(id)
   })
 
+  ipcMain.handle('adb:file-content', async (_e, serial: string, remotePath: string) => {
+    return adbService.getFileContent(serial, remotePath)
+  })
+
+  ipcMain.handle('adb:file-base64', async (_e, serial: string, remotePath: string) => {
+    return adbService.getFileAsBase64(serial, remotePath)
+  })
+
   ipcMain.handle('dialog:select-directory', async () => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {

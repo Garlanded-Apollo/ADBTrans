@@ -25,6 +25,10 @@ const api = {
   },
   cancelTransfer: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('adb:cancel-transfer', id),
+  getFileContent: (serial: string, remotePath: string): Promise<string> =>
+    ipcRenderer.invoke('adb:file-content', serial, remotePath),
+  getFileBase64: (serial: string, remotePath: string): Promise<string> =>
+    ipcRenderer.invoke('adb:file-base64', serial, remotePath),
   selectDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke('dialog:select-directory'),
   selectFiles: (): Promise<string[] | null> =>

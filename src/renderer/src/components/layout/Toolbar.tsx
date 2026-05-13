@@ -1,17 +1,23 @@
-import { ArrowLeft, ArrowRight, Home, Search, FolderUp, FolderDown, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, ArrowRight, Home, Search, FolderUp, FolderDown, Trash2, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useQueueStore, executeTask } from '@/stores/queueStore'
-import { useState, useEffect } from 'react'
+import { useBookmarkStore } from '@/stores/bookmarkStore'
+import { useEffect } from 'react'
 
 export function Toolbar(): JSX.Element {
   const { currentPath, goBack, goForward, canGoBack, canGoForward, selected, checkedPaths, files, navigateTo } = useFileStore()
   const { current } = useDeviceStore()
   const { addTask, startNextPending } = useQueueStore()
+  const { addBookmark, isBookmarked } = useBookmarkStore()
   const [inputPath, setInputPath] = useState(currentPath)
+  const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
+  const [bookmarkLabel, setBookmarkLabel] = useState('')
 
   useEffect(() => { setInputPath(currentPath) }, [currentPath])
 
@@ -38,10 +44,10 @@ export function Toolbar(): JSX.Element {
   const handleDownload = async (): Promise<void> => {
     if (!current?.serial) return
 
-    const checkedFiles = files.filter((f) => checkedPaths.has(f.path) && f.type !== 'folder')
+    const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
     const targetFiles = checkedFiles.length > 0
       ? checkedFiles
-      : selected && selected.type !== 'folder'
+      : selected
         ? [selected]
         : []
 
@@ -82,7 +88,22 @@ export function Toolbar(): JSX.Element {
     if (next) executeTask(next)
   }
 
+  const handleAddBookmark = (): void => {
+    const defaultName = currentPath.split('/').pop() || currentPath
+    setBookmarkLabel(defaultName)
+    setBookmarkDialogOpen(true)
+  }
+
+  const handleConfirmBookmark = (): void => {
+    if (bookmarkLabel.trim()) {
+      addBookmark(bookmarkLabel.trim(), currentPath)
+      setBookmarkDialogOpen(false)
+      setBookmarkLabel('')
+    }
+  }
+
   const checkedCount = files.filter((f) => checkedPaths.has(f.path)).length
+  const bookmarked = isBookmarked(currentPath)
 
   return (
     <div className="flex h-11 items-center gap-1.5 border-b px-3">
@@ -100,24 +121,56 @@ export function Toolbar(): JSX.Element {
         <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input className="h-7 pl-8 text-xs" value={inputPath} onChange={(e) => setInputPath(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && navigate(inputPath)} placeholder="/storage/emulated/0" />
       </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={`h-7 w-7 ${bookmarked ? 'text-yellow-500' : 'text-muted-foreground'}`}
+        title="收藏当前路径"
+        onClick={handleAddBookmark}
+        disabled={!current}
+      >
+        <Star className={`h-3.5 w-3.5 ${bookmarked ? 'fill-current' : ''}`} />
+      </Button>
       {checkedCount > 0 && (
         <span className="shrink-0 text-[10px] text-primary">已选 {checkedCount} 项</span>
       )}
       <Separator orientation="vertical" className="mx-1 h-5" />
-      <Button variant="ghost" size="icon" className="h-7 w-7" title="上传到手机" onClick={handleUpload} disabled={!current}>
-        <FolderUp className="h-3.5 w-3.5" />
+      <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" title="上传到手机" onClick={handleUpload} disabled={!current}>
+        <FolderUp className="h-5 w-5" />
       </Button>
       <Button
         variant="ghost"
         size="icon"
-        className="h-7 w-7"
+        className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
         title="下载到电脑"
         onClick={handleDownload}
-        disabled={checkedCount === 0 && (!selected || selected.type === 'folder')}
+        disabled={checkedCount === 0 && !selected}
       >
-        <FolderDown className="h-3.5 w-3.5" />
+        <FolderDown className="h-5 w-5" />
       </Button>
-      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="删除" disabled={!selected}><Trash2 className="h-3.5 w-3.5" /></Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除" disabled={!selected}><Trash2 className="h-4 w-4" /></Button>
+
+      <Dialog open={bookmarkDialogOpen} onOpenChange={setBookmarkDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>收藏路径</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 space-y-3">
+            <div className="text-xs text-muted-foreground">路径: {currentPath}</div>
+            <Input
+              placeholder="显示名称"
+              value={bookmarkLabel}
+              onChange={(e) => setBookmarkLabel(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmBookmark()}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBookmarkDialogOpen(false)}>取消</Button>
+            <Button onClick={handleConfirmBookmark}>收藏</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

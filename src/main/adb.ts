@@ -77,7 +77,7 @@ function parseState(raw: string): DeviceInfo['state'] {
   return (['device', 'offline', 'unauthorized'] as const).includes(s as any) ? (s as DeviceInfo['state']) : 'unknown'
 }
 
-function parseDevices(output: string): DeviceInfo[] {
+function parseDevicesSimple(output: string): DeviceInfo[] {
   const devices: DeviceInfo[] = []
   for (const raw of output.split('\n')) {
     const line = raw.trim()
@@ -91,10 +91,7 @@ function parseDevices(output: string): DeviceInfo[] {
       if (!m) continue
       serial = m[1]; stateRaw = m[2]
     }
-    const info: DeviceInfo = { serial, state: parseState(stateRaw) }
-    const modelMatch = line.match(/model:(\S+)/)
-    if (modelMatch) info.model = modelMatch[1].replace(/_/g, ' ')
-    devices.push(info)
+    devices.push({ serial, state: parseState(stateRaw) })
   }
   return devices
 }
@@ -192,9 +189,21 @@ export class AdbService extends EventEmitter {
     return this._adbCheckResult
   }
 
+  async getDeviceModel(serial: string): Promise<string | undefined> {
+    try {
+      const model = await execAdb(['-s', serial, 'shell', 'getprop', 'ro.product.model'], 5000)
+      return model.trim() || undefined
+    } catch {
+      return undefined
+    }
+  }
+
   async getDevices(): Promise<DeviceInfo[]> {
-    const output = await execAdb(['devices', '-l'])
-    const devices = parseDevices(output)
+    const output = await execAdb(['devices'])
+    const devices = parseDevicesSimple(output)
+    const connected = devices.filter((d) => d.state === 'device')
+    const models = await Promise.all(connected.map((d) => this.getDeviceModel(d.serial)))
+    connected.forEach((d, i) => { d.model = models[i] })
     this._devices = devices
     this.emit('devices-changed', devices)
     return devices
@@ -255,16 +264,14 @@ export class AdbService extends EventEmitter {
       }
 
       try {
-        const fullOutput = await execAdb(['devices', '-l'])
-        const fullDevices = parseDevices(fullOutput)
-        const merged: DeviceInfo[] = []
-        for (const [serial, state] of stateMap) {
-          const full = fullDevices.find((d) => d.serial === serial)
-          merged.push({ serial, state, model: full?.model })
-        }
-        this._devices = merged
-        console.log('[track-devices] merged devices:', merged)
-        this.emit('devices-changed', merged)
+        const output = await execAdb(['devices'])
+        const devices = parseDevicesSimple(output)
+        const connected = devices.filter((d) => d.state === 'device')
+        const models = await Promise.all(connected.map((d) => this.getDeviceModel(d.serial)))
+        connected.forEach((d, i) => { d.model = models[i] })
+        this._devices = devices
+        console.log('[track-devices] devices with model:', devices)
+        this.emit('devices-changed', devices)
       } catch {
         const devices: DeviceInfo[] = []
         for (const [serial, state] of stateMap) {
@@ -298,7 +305,7 @@ export class AdbService extends EventEmitter {
   async listFiles(serial: string, path: string): Promise<FileEntry[]> {
     const cleanPath = path.replace(/\/+$/, '') || '/'
     console.log('[listFiles] serial:', serial, 'path:', cleanPath)
-    const output = await execAdb(['-s', serial, 'shell', 'ls', '-la', cleanPath], 30000)
+    const output = await execAdb(['-s', serial, 'shell', `ls -la "${cleanPath}"`], 30000)
     return parseLsOutput(output, cleanPath)
   }
 
@@ -360,6 +367,95 @@ export class AdbService extends EventEmitter {
       return true
     }
     return false
+  }
+
+  async getFileContent(serial: string, remotePath: string, maxBytes = 1024 * 100): Promise<string> {
+    const adbPath = findAdb()
+    return new Promise((resolve, reject) => {
+      const proc = spawn(adbPath, ['-s', serial, 'exec-out', `cat "${remotePath}"`], { stdio: ['ignore', 'pipe', 'pipe'] })
+      const chunks: Buffer[] = []
+      let totalBytes = 0
+      let settled = false
+
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          proc.kill()
+          reject(new Error('Timeout reading file'))
+        }
+      }, 10000)
+
+      proc.stdout?.on('data', (chunk: Buffer) => {
+        if (totalBytes < maxBytes) {
+          chunks.push(chunk)
+          totalBytes += chunk.length
+        }
+      })
+
+      proc.on('close', (code) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeout)
+          if (code === 0) {
+            const content = Buffer.concat(chunks).toString('utf-8')
+            resolve(content)
+          } else {
+            reject(new Error(`Failed to read file, exit code: ${code}`))
+          }
+        }
+      })
+
+      proc.on('error', (err) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeout)
+          reject(err)
+        }
+      })
+    })
+  }
+
+  async getFileAsBase64(serial: string, remotePath: string): Promise<string> {
+    const adbPath = findAdb()
+    return new Promise((resolve, reject) => {
+      const proc = spawn(adbPath, ['-s', serial, 'exec-out', `cat "${remotePath}"`], { stdio: ['ignore', 'pipe', 'pipe'] })
+      const chunks: Buffer[] = []
+      let settled = false
+
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          proc.kill()
+          reject(new Error('Timeout reading file'))
+        }
+      }, 10000)
+
+      proc.stdout?.on('data', (chunk: Buffer) => {
+        chunks.push(chunk)
+      })
+
+      proc.on('close', (code) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeout)
+          if (code === 0) {
+            const buffer = Buffer.concat(chunks)
+            const base64 = buffer.toString('base64')
+            resolve(base64)
+          } else {
+            reject(new Error(`Failed to read file, exit code: ${code}`))
+          }
+        }
+      })
+
+      proc.on('error', (err) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeout)
+          reject(err)
+        }
+      })
+    })
   }
 }
 

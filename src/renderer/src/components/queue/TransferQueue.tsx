@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { X, Trash2, ChevronUp, ChevronDown, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useQueueStore, type QueueTask } from '@/stores/queueStore'
 import { cn } from '@/lib/utils'
 
@@ -70,11 +69,11 @@ export function TransferQueue(): JSX.Element {
         )}
       </div>
       {expanded && tasks.length > 0 && (
-        <ScrollArea className="max-h-[160px]">
+        <div className="max-h-[160px] overflow-y-auto">
           <div className="space-y-1.5 px-3 pb-2">
-            {tasks.map((task) => <TaskRow key={task.id} task={task} />)}
+            {[...tasks].reverse().map((task) => <TaskRow key={task.id} task={task} />)}
           </div>
-        </ScrollArea>
+        </div>
       )}
       {expanded && tasks.length === 0 && <div className="px-3 pb-2 text-center text-xs text-muted-foreground">暂无传输任务</div>}
     </div>

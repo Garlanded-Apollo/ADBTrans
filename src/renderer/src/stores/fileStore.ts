@@ -107,7 +107,8 @@ export const useFileStore = create<FileStore>((set, get) => ({
       const entries = await window.api.listFiles(serial, currentPath)
       set({ files: entries, loading: false })
     } catch (err) {
-      set({ files: [], loading: false, error: (err as Error).message || '加载失败' })
+      const msg = (err as Error).message || '加载失败'
+      set({ files: [], loading: false, error: msg.includes('device') ? '设备未连接或离线' : msg })
     }
   }
 }))

@@ -3,6 +3,7 @@ import { Folder, File, Image, FileText, FileJson, FileCode, Film, Music, Package
 import { useFileStore, type FileItem } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { cn, formatBytes, formatDate } from '@/lib/utils'
+import { Thumbnail, isImageFile } from './Thumbnail'
 
 function getFileIcon(item: FileItem): JSX.Element {
   if (item.type === 'folder') return <Folder className="h-4 w-4 text-blue-500" />
@@ -36,7 +37,11 @@ const columns: ColumnDef[] = [
     label: '名称',
     render: (item) => (
       <div className="flex items-center gap-2">
-        {getFileIcon(item)}
+        {isImageFile(item.name) && item.type !== 'folder' ? (
+          <Thumbnail path={item.path} name={item.name} />
+        ) : (
+          getFileIcon(item)
+        )}
         <span className="truncate">{item.name}</span>
       </div>
     )
@@ -250,11 +255,11 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         )}
       </div>
       <div className="flex-1 overflow-auto">
-        <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+        <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
           <thead className="sticky top-0 z-10 bg-background">
             <tr className="border-b">
               {showCheckboxes && (
-                <th className="h-9 px-2 align-middle" style={{ width: `${CHECKBOX_WIDTH}%` }}>
+                <th className="h-9 pl-3 pr-2 align-middle" style={{ width: `${CHECKBOX_WIDTH}%` }}>
                   <div className="flex h-full items-center justify-center">
                     <input
                       type="checkbox"
@@ -302,13 +307,14 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                   onDoubleClick={() => handleDoubleClick(item)}
                 >
                   {showCheckboxes && (
-                    <td className="px-2 align-middle" style={{ width: `${CHECKBOX_WIDTH}%` }}>
+                    <td className="pl-3 pr-2 align-middle" style={{ width: `${CHECKBOX_WIDTH}%` }}>
                       <div className="flex h-full items-center justify-center">
                         <input
                           type="checkbox"
                           className="h-3.5 w-3.5 cursor-pointer accent-primary"
                           checked={isChecked}
                           onChange={() => toggleCheck(item.path)}
+                          onClick={(e) => e.stopPropagation()}
                         />
                       </div>
                     </td>

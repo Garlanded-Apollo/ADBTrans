@@ -1,18 +1,20 @@
-import { Download, Upload, Clock, FolderOpen, Star, HardDrive } from 'lucide-react'
+import { useState } from 'react'
+import { Download, Upload, Clock, FolderOpen, Star, HardDrive, Settings } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DeviceCard } from '@/components/device/DeviceCard'
+import { BookmarkDialog } from '@/components/bookmark/BookmarkDialog'
 import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
+import { useBookmarkStore } from '@/stores/bookmarkStore'
 import { cn } from '@/lib/utils'
 
-const QUICK_PATHS = [
-  { label: '内部存储', path: '/storage/emulated/0', icon: HardDrive },
-  { label: 'Download', path: '/storage/emulated/0/Download', icon: Download },
-  { label: 'DCIM', path: '/storage/emulated/0/DCIM', icon: Star },
-  { label: 'Pictures', path: '/storage/emulated/0/Pictures', icon: Star },
-  { label: 'Documents', path: '/storage/emulated/0/Documents', icon: FolderOpen }
-]
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  HardDrive,
+  Download,
+  Star,
+  FolderOpen
+}
 
 interface SidebarProps {
   onOpenWifiDialog?: () => void
@@ -21,6 +23,8 @@ interface SidebarProps {
 export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
   const { currentPath, navigateTo } = useFileStore()
   const { current } = useDeviceStore()
+  const { bookmarks } = useBookmarkStore()
+  const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
 
   const navigate = (path: string): void => {
     if (!current?.serial) return
@@ -34,23 +38,33 @@ export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
           <DeviceCard onOpenWifiDialog={onOpenWifiDialog} />
           <Separator />
           <div className="space-y-1">
-            <div className="flex items-center gap-2 px-1">
-              <FolderOpen className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">快捷路径</span>
-            </div>
-            {QUICK_PATHS.map((item) => (
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">快捷路径</span>
+              </div>
               <button
-                key={item.path}
-                className={cn(
-                  'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
-                  currentPath === item.path ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
-                )}
-                onClick={() => navigate(item.path)}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted"
+                onClick={() => setBookmarkDialogOpen(true)}
               >
-                <item.icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{item.label}</span>
+                <Settings className="h-3.5 w-3.5" />
               </button>
-            ))}
+            </div>
+            <div className="max-h-[200px] overflow-y-auto">
+              {bookmarks.map((item) => (
+                <button
+                  key={item.id}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
+                    currentPath === item.path ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
+                  )}
+                  onClick={() => navigate(item.path)}
+                >
+                  <Star className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
           <Separator />
           <div className="space-y-1">
@@ -68,6 +82,7 @@ export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
           <span>拖拽文件到此处上传</span>
         </div>
       </div>
+      <BookmarkDialog open={bookmarkDialogOpen} onOpenChange={setBookmarkDialogOpen} />
     </aside>
   )
 }
