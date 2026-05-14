@@ -1,7 +1,10 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { adbService } from './adb'
+import { thumbnailQueue, previewQueue } from './requestQueue'
+import { existsSync } from 'fs'
+import { tmpdir } from 'os'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -77,12 +80,42 @@ function registerIpcHandlers(): void {
     return adbService.cancelTransfer(id)
   })
 
+  ipcMain.handle('adb:mkdir', async (_e, serial: string, remotePath: string) => {
+    return adbService.mkdir(serial, remotePath)
+  })
+
+  ipcMain.handle('adb:rename', async (_e, serial: string, oldPath: string, newPath: string) => {
+    return adbService.rename(serial, oldPath, newPath)
+  })
+
+  ipcMain.handle('adb:delete', async (_e, serial: string, remotePath: string) => {
+    return adbService.delete(serial, remotePath)
+  })
+
   ipcMain.handle('adb:file-content', async (_e, serial: string, remotePath: string) => {
-    return adbService.getFileContent(serial, remotePath)
+    return new Promise((resolve, reject) => {
+      previewQueue.add(async () => {
+        try {
+          const result = await adbService.getFileContent(serial, remotePath)
+          resolve(result)
+        } catch (err) {
+          reject(err)
+        }
+      })
+    })
   })
 
   ipcMain.handle('adb:file-base64', async (_e, serial: string, remotePath: string) => {
-    return adbService.getFileAsBase64(serial, remotePath)
+    return new Promise((resolve, reject) => {
+      thumbnailQueue.add(async () => {
+        try {
+          const result = await adbService.getFileAsBase64(serial, remotePath)
+          resolve(result)
+        } catch (err) {
+          reject(err)
+        }
+      })
+    })
   })
 
   ipcMain.handle('dialog:select-directory', async () => {
@@ -101,6 +134,33 @@ function registerIpcHandlers(): void {
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths
+  })
+
+  ipcMain.on('adb:start-drag', async (_e, serial: string, remotePath: string, fileName: string) => {
+    const tempDir = join(tmpdir(), 'adbtrans-drag')
+    const tempFile = join(tempDir, fileName)
+
+    try {
+      const { mkdirSync } = require('fs')
+      mkdirSync(tempDir, { recursive: true })
+
+      await new Promise<void>((resolve, reject) => {
+        adbService.startTransfer('drag-' + Date.now(), ['-s', serial, 'pull', remotePath, tempFile], {
+          onProgress: () => {},
+          onDone: () => resolve(),
+          onError: (err) => reject(new Error(err))
+        })
+      })
+
+      if (mainWindow && existsSync(tempFile)) {
+        mainWindow.webContents.startDrag({
+          file: tempFile,
+          icon: nativeImage.createFromPath(tempFile)
+        })
+      }
+    } catch (err) {
+      console.error('Drag failed:', err)
+    }
   })
 }
 

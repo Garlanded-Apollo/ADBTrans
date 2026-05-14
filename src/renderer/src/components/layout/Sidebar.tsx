@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Upload, Clock, FolderOpen, Star, HardDrive, Settings } from 'lucide-react'
+import { Clock, FolderOpen, Star, HardDrive, Settings } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DeviceCard } from '@/components/device/DeviceCard'
@@ -11,7 +11,6 @@ import { cn } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   HardDrive,
-  Download,
   Star,
   FolderOpen
 }
@@ -76,12 +75,6 @@ export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
           </div>
         </div>
       </ScrollArea>
-      <div className="border-t p-3">
-        <div className="flex items-center gap-2 rounded-lg border border-dashed p-2.5 text-xs text-muted-foreground">
-          <Upload className="h-4 w-4" />
-          <span>拖拽文件到此处上传</span>
-        </div>
-      </div>
       <BookmarkDialog open={bookmarkDialogOpen} onOpenChange={setBookmarkDialogOpen} />
     </aside>
   )

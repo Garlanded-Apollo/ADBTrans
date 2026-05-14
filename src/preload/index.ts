@@ -25,6 +25,12 @@ const api = {
   },
   cancelTransfer: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('adb:cancel-transfer', id),
+  mkdir: (serial: string, remotePath: string): Promise<void> =>
+    ipcRenderer.invoke('adb:mkdir', serial, remotePath),
+  rename: (serial: string, oldPath: string, newPath: string): Promise<void> =>
+    ipcRenderer.invoke('adb:rename', serial, oldPath, newPath),
+  deletePath: (serial: string, remotePath: string): Promise<void> =>
+    ipcRenderer.invoke('adb:delete', serial, remotePath),
   getFileContent: (serial: string, remotePath: string): Promise<string> =>
     ipcRenderer.invoke('adb:file-content', serial, remotePath),
   getFileBase64: (serial: string, remotePath: string): Promise<string> =>
@@ -33,6 +39,9 @@ const api = {
     ipcRenderer.invoke('dialog:select-directory'),
   selectFiles: (): Promise<string[] | null> =>
     ipcRenderer.invoke('dialog:select-files'),
+  startDrag: (serial: string, remotePath: string, fileName: string): void => {
+    ipcRenderer.send('adb:start-drag', serial, remotePath, fileName)
+  },
 
   onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void): void => {
     ipcRenderer.on('adb:transfer-progress', (_event, data) => callback(data))

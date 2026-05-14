@@ -1,9 +1,15 @@
-import { useState, useCallback, useRef, useMemo } from 'react'
-import { Folder, File, Image, FileText, FileJson, FileCode, Film, Music, Package, Loader2, AlertCircle, Search, X } from 'lucide-react'
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
+import { Folder, File, Image, FileText, FileJson, FileCode, Film, Music, Package, Loader2, AlertCircle, Search, X, Upload } from 'lucide-react'
 import { useFileStore, type FileItem } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
+import { useQueueStore, executeTask } from '@/stores/queueStore'
 import { cn, formatBytes, formatDate } from '@/lib/utils'
 import { Thumbnail, isImageFile } from './Thumbnail'
+import { ContextMenu } from './ContextMenu'
+import { InputDialog } from '@/components/ui/input-dialog'
+
+const INITIAL_BATCH = 50
+const LOAD_MORE_BATCH = 30
 
 function getFileIcon(item: FileItem): JSX.Element {
   if (item.type === 'folder') return <Folder className="h-4 w-4 text-blue-500" />
@@ -69,24 +75,55 @@ interface FileTableProps {
 }
 
 export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
-  const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error } = useFileStore()
+  const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath } = useFileStore()
   const { current } = useDeviceStore()
+  const { addTask, startNextPending } = useQueueStore()
   const [widths, setWidths] = useState<number[]>(DEFAULT_WIDTHS)
   const [keyword, setKeyword] = useState('')
   const [showCheckboxes, setShowCheckboxes] = useState(false)
+  const [displayCount, setDisplayCount] = useState(INITIAL_BATCH)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [renameTarget, setRenameTarget] = useState<FileItem | null>(null)
+  const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const resizingRef = useRef<{ index: number; startX: number; startWidth: number; nextStartWidth: number } | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressTriggeredRef = useRef(false)
   const lastClickIndexRef = useRef<number | null>(null)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   const filteredFiles = keyword.trim()
     ? files.filter((f) => f.name.toLowerCase().includes(keyword.trim().toLowerCase()))
     : files
 
+  const displayedFiles = useMemo(() => filteredFiles.slice(0, displayCount), [filteredFiles, displayCount])
+  const hasMore = displayCount < filteredFiles.length
+
   const filteredPaths = useMemo(() => filteredFiles.map((f) => f.path), [filteredFiles])
   const allChecked = filteredPaths.length > 0 && filteredPaths.every((p) => checkedPaths.has(p))
   const hasChecked = checkedPaths.size > 0
+
+  useEffect(() => {
+    setDisplayCount(INITIAL_BATCH)
+  }, [keyword, files])
+
+  useEffect(() => {
+    const el = loadMoreRef.current
+    if (!el || !hasMore) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setDisplayCount((prev) => prev + LOAD_MORE_BATCH)
+        }
+      },
+      { rootMargin: '200px' }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore])
 
   const enableCheckboxes = useCallback((): void => {
     if (!showCheckboxes) setShowCheckboxes(true)
@@ -146,6 +183,122 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       onOpenFolder(item.path)
     }
   }, [onOpenFolder, handleMouseUp])
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY })
+  }, [])
+
+  const handleNewFolder = useCallback(async () => {
+    setContextMenu(null)
+    setNewFolderDialogOpen(true)
+  }, [])
+
+  const handleRename = useCallback(() => {
+    setContextMenu(null)
+    const target = checkedPaths.size > 0
+      ? files.find((f) => checkedPaths.has(f.path))
+      : selected
+    if (target) setRenameTarget(target)
+  }, [selected, checkedPaths, files])
+
+  const handleDelete = useCallback(async () => {
+    setContextMenu(null)
+    if (!current?.serial) return
+
+    const targetFiles = checkedPaths.size > 0
+      ? files.filter((f) => checkedPaths.has(f.path))
+      : selected
+        ? [selected]
+        : []
+
+    if (targetFiles.length === 0) return
+
+    const names = targetFiles.map((f) => f.name).join('\n')
+    const ok = window.confirm(`确定要删除以下文件吗？\n\n${names}`)
+    if (!ok) return
+
+    for (const f of targetFiles) {
+      try {
+        await window.api.deletePath(current.serial, f.path)
+      } catch (err) {
+        console.error('Delete failed:', err)
+      }
+    }
+    useFileStore.getState().loadCurrentPath(current.serial)
+  }, [current?.serial, selected, checkedPaths, files])
+
+  const handleDownload = useCallback(async () => {
+    setContextMenu(null)
+    if (!current?.serial) return
+
+    const targetFiles = checkedPaths.size > 0
+      ? files.filter((f) => checkedPaths.has(f.path))
+      : selected
+        ? [selected]
+        : []
+
+    if (targetFiles.length === 0) return
+
+    const localDir = await window.api.selectDirectory()
+    if (!localDir) return
+
+    for (const f of targetFiles) {
+      addTask({
+        serial: current.serial,
+        fileName: f.name,
+        fromPath: f.path,
+        toPath: `${localDir}/${f.name}`,
+        direction: 'pull'
+      })
+    }
+    const next = startNextPending()
+    if (next) executeTask(next)
+  }, [current?.serial, selected, checkedPaths, files, addTask, startNextPending])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (!current?.serial) return
+
+    const droppedFiles = Array.from(e.dataTransfer.files)
+    for (const file of droppedFiles) {
+      const filePath = (file as File & { path: string }).path
+      if (!filePath) continue
+      const fileName = file.name
+      const remotePath = `${currentPath}/${fileName}`
+      addTask({
+        serial: current.serial,
+        fileName,
+        fromPath: filePath,
+        toPath: remotePath,
+        direction: 'push'
+      })
+    }
+    const next = startNextPending()
+    if (next) executeTask(next)
+  }, [current?.serial, currentPath, addTask, startNextPending])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    setDragOver(false)
+  }, [])
+
+  const handleFileDragStart = useCallback((e: React.DragEvent, item: FileItem) => {
+    if (!current?.serial) return
+    if (item.type === 'folder') {
+      e.preventDefault()
+      return
+    }
+    e.dataTransfer.effectAllowed = 'copy'
+    e.dataTransfer.setData('text/plain', item.name)
+    window.api.startDrag(current.serial, item.path, item.name)
+  }, [current?.serial])
 
   const handleResizeStart = useCallback((e: React.MouseEvent, index: number) => {
     e.preventDefault()
@@ -221,7 +374,23 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   }
 
   return (
-    <div ref={tableRef} className="flex h-full flex-col overflow-hidden">
+    <div
+      ref={tableRef}
+      className={cn(
+        'flex h-full flex-col overflow-hidden transition-colors',
+        dragOver && 'bg-primary/5'
+      )}
+      onContextMenu={handleContextMenu}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+    >
+      {dragOver && (
+        <div className="flex items-center justify-center gap-2 bg-primary/10 py-2 text-xs text-primary">
+          <Upload className="h-4 w-4" />
+          <span>释放文件以上传到当前目录</span>
+        </div>
+      )}
       <div className="flex items-center gap-2 border-b px-3 py-1.5">
         <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <input
@@ -290,7 +459,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
             </tr>
           </thead>
           <tbody>
-            {filteredFiles.map((item, index) => {
+            {displayedFiles.map((item, index) => {
               const isChecked = checkedPaths.has(item.path)
               return (
                 <tr
@@ -300,11 +469,13 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                     selected?.path === item.path && !showCheckboxes && 'bg-primary/10',
                     isChecked && showCheckboxes && 'bg-primary/10'
                   )}
+                  draggable
                   onMouseDown={() => handleMouseDown(item, index)}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
                   onClick={(e) => handleClick(e, item, index)}
                   onDoubleClick={() => handleDoubleClick(item)}
+                  onDragStart={(e) => handleFileDragStart(e, item)}
                 >
                   {showCheckboxes && (
                     <td className="pl-3 pr-2 align-middle" style={{ width: `${CHECKBOX_WIDTH}%` }}>
@@ -331,6 +502,15 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                 </tr>
               )
             })}
+            {hasMore && (
+              <tr>
+                <td colSpan={columns.length + (showCheckboxes ? 1 : 0)}>
+                  <div ref={loadMoreRef} className="py-2 text-center text-xs text-muted-foreground">
+                    加载更多...
+                  </div>
+                </td>
+              </tr>
+            )}
             {filteredFiles.length === 0 && (
               <tr>
                 <td colSpan={columns.length + (showCheckboxes ? 1 : 0)} className="h-32 text-center text-muted-foreground">
@@ -341,6 +521,46 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
           </tbody>
         </table>
       </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onNewFolder={handleNewFolder}
+          onRename={handleRename}
+          onDelete={handleDelete}
+          onDownload={handleDownload}
+          hasTarget={!!selected || checkedPaths.size > 0}
+          isMultiSelect={checkedPaths.size > 1}
+        />
+      )}
+      <InputDialog
+        open={newFolderDialogOpen}
+        title="新建文件夹"
+        label="文件夹名称"
+        placeholder="新建文件夹"
+        onConfirm={async (name) => {
+          if (!current?.serial) return
+          await window.api.mkdir(current.serial, `${currentPath}/${name}`)
+          useFileStore.getState().loadCurrentPath(current.serial)
+          setNewFolderDialogOpen(false)
+        }}
+        onCancel={() => setNewFolderDialogOpen(false)}
+      />
+      <InputDialog
+        open={!!renameTarget}
+        title="重命名"
+        label="新名称"
+        defaultValue={renameTarget?.name}
+        onConfirm={async (name) => {
+          if (!current?.serial || !renameTarget) return
+          const parentPath = renameTarget.path.substring(0, renameTarget.path.lastIndexOf('/'))
+          await window.api.rename(current.serial, renameTarget.path, `${parentPath}/${name}`)
+          useFileStore.getState().loadCurrentPath(current.serial)
+          setRenameTarget(null)
+        }}
+        onCancel={() => setRenameTarget(null)}
+      />
     </div>
   )
 }

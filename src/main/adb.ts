@@ -62,7 +62,7 @@ function findAdb(): string {
 function execAdb(args: string[], timeout = 15000): Promise<string> {
   return new Promise((resolve, reject) => {
     const adbPath = findAdb()
-    execFile(adbPath, args, { timeout, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(adbPath, args, { timeout, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) {
         reject(new Error(`ADB error: ${err.message}\nstderr: ${stderr}`))
         return
@@ -383,7 +383,7 @@ export class AdbService extends EventEmitter {
           proc.kill()
           reject(new Error('Timeout reading file'))
         }
-      }, 10000)
+      }, 30000)
 
       proc.stdout?.on('data', (chunk: Buffer) => {
         if (totalBytes < maxBytes) {
@@ -428,7 +428,7 @@ export class AdbService extends EventEmitter {
           proc.kill()
           reject(new Error('Timeout reading file'))
         }
-      }, 10000)
+      }, 30000)
 
       proc.stdout?.on('data', (chunk: Buffer) => {
         chunks.push(chunk)
@@ -456,6 +456,18 @@ export class AdbService extends EventEmitter {
         }
       })
     })
+  }
+
+  async mkdir(serial: string, remotePath: string): Promise<void> {
+    await execAdb(['-s', serial, 'shell', `mkdir "${remotePath}"`])
+  }
+
+  async rename(serial: string, oldPath: string, newPath: string): Promise<void> {
+    await execAdb(['-s', serial, 'shell', `mv "${oldPath}" "${newPath}"`])
+  }
+
+  async delete(serial: string, remotePath: string): Promise<void> {
+    await execAdb(['-s', serial, 'shell', `rm -rf "${remotePath}"`])
   }
 }
 

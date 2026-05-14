@@ -102,6 +102,32 @@ export function Toolbar(): JSX.Element {
     }
   }
 
+  const handleDelete = async (): Promise<void> => {
+    if (!current?.serial) return
+
+    const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
+    const targetFiles = checkedFiles.length > 0
+      ? checkedFiles
+      : selected
+        ? [selected]
+        : []
+
+    if (targetFiles.length === 0) return
+
+    const names = targetFiles.map((f) => f.name).join('\n')
+    const ok = window.confirm(`确定要删除以下文件吗？\n\n${names}`)
+    if (!ok) return
+
+    for (const f of targetFiles) {
+      try {
+        await window.api.deletePath(current.serial, f.path)
+      } catch (err) {
+        console.error('Delete failed:', err)
+      }
+    }
+    useFileStore.getState().loadCurrentPath(current.serial)
+  }
+
   const checkedCount = files.filter((f) => checkedPaths.has(f.path)).length
   const bookmarked = isBookmarked(currentPath)
 
@@ -148,7 +174,7 @@ export function Toolbar(): JSX.Element {
       >
         <FolderDown className="h-5 w-5" />
       </Button>
-      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除" disabled={!selected}><Trash2 className="h-4 w-4" /></Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除" onClick={handleDelete} disabled={checkedCount === 0 && !selected}><Trash2 className="h-4 w-4" /></Button>
 
       <Dialog open={bookmarkDialogOpen} onOpenChange={setBookmarkDialogOpen}>
         <DialogContent className="max-w-sm">

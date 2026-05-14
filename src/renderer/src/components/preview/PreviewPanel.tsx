@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Image, File, Info, Loader2 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -60,21 +60,29 @@ function FileInfo({ file }: { file: { name: string; path: string; type: string; 
 }
 
 export function PreviewPanel(): JSX.Element {
-  const { selected } = useFileStore()
+  const { selected, checkedPaths, files } = useFileStore()
   const { current } = useDeviceStore()
   const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [textContent, setTextContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const previewFile = useMemo(() => {
+    if (checkedPaths.size > 0) {
+      const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
+      return checkedFiles[checkedFiles.length - 1] || selected
+    }
+    return selected
+  }, [selected, checkedPaths, files])
+
   useEffect(() => {
     setImageSrc(null)
     setTextContent(null)
     setError(null)
 
-    if (!selected || !current || current.state !== 'device' || selected.type === 'folder') return
+    if (!previewFile || !current || current.state !== 'device' || previewFile.type === 'folder') return
 
-    const previewType = getPreviewType(selected.name)
+    const previewType = getPreviewType(previewFile.name)
     if (previewType === 'unknown') return
 
     let cancelled = false
@@ -85,13 +93,13 @@ export function PreviewPanel(): JSX.Element {
 
       try {
         if (previewType === 'image') {
-          const base64 = await window.api.getFileBase64(current.serial, selected.path)
+          const base64 = await window.api.getFileBase64(current.serial, previewFile.path)
           if (!cancelled) {
-            const mimeType = getMimeType(selected.name)
+            const mimeType = getMimeType(previewFile.name)
             setImageSrc(`data:${mimeType};base64,${base64}`)
           }
         } else if (previewType === 'text') {
-          const content = await window.api.getFileContent(current.serial, selected.path)
+          const content = await window.api.getFileContent(current.serial, previewFile.path)
           if (!cancelled) {
             setTextContent(content)
           }
@@ -112,9 +120,9 @@ export function PreviewPanel(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [selected?.path, current?.serial, current?.state])
+  }, [previewFile?.path, current?.serial, current?.state])
 
-  if (!selected) {
+  if (!previewFile) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center border-l text-muted-foreground">
         <File className="mb-2 h-8 w-8 opacity-30" />
@@ -123,7 +131,7 @@ export function PreviewPanel(): JSX.Element {
     )
   }
 
-  const previewType = selected.type === 'folder' ? 'unknown' : getPreviewType(selected.name)
+  const previewType = previewFile.type === 'folder' ? 'unknown' : getPreviewType(previewFile.name)
 
   // 图片类型：预览+信息合并显示
   if (previewType === 'image') {
@@ -149,7 +157,7 @@ export function PreviewPanel(): JSX.Element {
               <div className="flex items-center justify-center">
                 <img
                   src={imageSrc}
-                  alt={selected.name}
+                  alt={previewFile.name}
                   className="max-h-full max-w-full object-contain"
                   style={{ maxHeight: 'calc(100vh - 350px)' }}
                 />
@@ -164,7 +172,7 @@ export function PreviewPanel(): JSX.Element {
             )}
           </div>
           <Separator />
-          <FileInfo file={selected} />
+          <FileInfo file={previewFile} />
         </ScrollArea>
       </div>
     )
@@ -215,7 +223,7 @@ export function PreviewPanel(): JSX.Element {
           </TabsContent>
           <TabsContent value="info" className="flex-1 m-0">
             <ScrollArea className="h-full">
-              <FileInfo file={selected} />
+              <FileInfo file={previewFile} />
             </ScrollArea>
           </TabsContent>
         </Tabs>
@@ -227,7 +235,7 @@ export function PreviewPanel(): JSX.Element {
   return (
     <div className="flex h-full w-full flex-col border-l">
       <ScrollArea className="flex-1">
-        <FileInfo file={selected} />
+        <FileInfo file={previewFile} />
       </ScrollArea>
     </div>
   )
