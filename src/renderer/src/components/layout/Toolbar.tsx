@@ -142,7 +142,7 @@ export function Toolbar(): JSX.Element {
         console.error('Delete failed:', err)
       }
     }
-    useFileStore.getState().loadCurrentPath(current.serial)
+    useFileStore.getState().removeFilesFromList(targetFiles.map((f) => f.path))
   }
 
   const checkedCount = files.filter((f) => checkedPaths.has(f.path)).length
@@ -177,9 +177,6 @@ export function Toolbar(): JSX.Element {
       >
         <Star className={`h-3.5 w-3.5 ${bookmarked ? 'fill-current' : ''}`} />
       </Button>
-      {checkedCount > 0 && (
-        <span className="shrink-0 text-[10px] text-primary">已选 {checkedCount} 项</span>
-      )}
       <Separator orientation="vertical" className="mx-1 h-5" />
       <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" title="上传文件到手机" onClick={handleUpload} disabled={!current}>
         <FileUp className="h-5 w-5" />

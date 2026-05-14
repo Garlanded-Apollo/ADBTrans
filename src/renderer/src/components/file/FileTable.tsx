@@ -75,7 +75,7 @@ interface FileTableProps {
 }
 
 export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
-  const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath } = useFileStore()
+  const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath, pendingScrollTo, setPendingScrollTo } = useFileStore()
   const { current } = useDeviceStore()
   const { addTask, startNextPending } = useQueueStore()
   const [widths, setWidths] = useState<number[]>(DEFAULT_WIDTHS)
@@ -107,6 +107,36 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   useEffect(() => {
     setDisplayCount(INITIAL_BATCH)
   }, [keyword, files])
+
+  useEffect(() => {
+    if (!pendingScrollTo || files.length === 0) return
+
+    const targetFile = files.find((f) => f.name === pendingScrollTo)
+    if (!targetFile) {
+      setPendingScrollTo(null)
+      return
+    }
+
+    const index = filteredFiles.findIndex((f) => f.path === targetFile.path)
+    if (index < 0) {
+      setPendingScrollTo(null)
+      return
+    }
+
+    const neededCount = Math.max(INITIAL_BATCH, index + 10)
+    setDisplayCount(neededCount)
+
+    const timer = setTimeout(() => {
+      const row = document.querySelector(`[data-path="${targetFile.path}"]`)
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      setSelected(targetFile)
+      setPendingScrollTo(null)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [pendingScrollTo, files, filteredFiles])
 
   useEffect(() => {
     const el = loadMoreRef.current
@@ -225,7 +255,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         console.error('Delete failed:', err)
       }
     }
-    useFileStore.getState().loadCurrentPath(current.serial)
+    useFileStore.getState().removeFilesFromList(targetFiles.map((f) => f.path))
   }, [current?.serial, selected, checkedPaths, files])
 
   const handleDownload = useCallback(async () => {
@@ -263,7 +293,8 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
 
     const droppedFiles = Array.from(e.dataTransfer.files)
     for (const file of droppedFiles) {
-      const filePath = (file as File & { path: string }).path
+      const filePath = window.api.getFilePath(file)
+      console.log('[Drop] file:', file.name, 'path:', filePath)
       if (!filePath) continue
       const fileName = file.name
       const remotePath = `${currentPath}/${fileName}`
@@ -404,13 +435,15 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
             <X className="h-3.5 w-3.5" />
           </button>
         )}
-        {hasChecked && (
+        {showCheckboxes && (
           <>
-            <span className="shrink-0 text-[10px] text-primary">
-              已选 {checkedPaths.size} 项
-            </span>
+            {checkedPaths.size > 0 && (
+              <span className="shrink-0 text-xs text-primary">
+                已选 {checkedPaths.size} 项
+              </span>
+            )}
             <button
-              className="shrink-0 text-[10px] text-destructive hover:text-destructive/80"
+              className="shrink-0 text-xs text-destructive hover:text-destructive/80"
               onClick={() => { clearChecks(); setShowCheckboxes(false) }}
             >
               取消
@@ -464,6 +497,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
               return (
                 <tr
                   key={item.path}
+                  data-path={item.path}
                   className={cn(
                     'border-b cursor-pointer select-none transition-colors hover:bg-muted/50',
                     selected?.path === item.path && !showCheckboxes && 'bg-primary/10',
@@ -542,7 +576,8 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         onConfirm={async (name) => {
           if (!current?.serial) return
           await window.api.mkdir(current.serial, `${currentPath}/${name}`)
-          useFileStore.getState().loadCurrentPath(current.serial)
+          await useFileStore.getState().loadCurrentPath(current.serial)
+          useFileStore.getState().setPendingScrollTo(name)
           setNewFolderDialogOpen(false)
         }}
         onCancel={() => setNewFolderDialogOpen(false)}
@@ -555,8 +590,9 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         onConfirm={async (name) => {
           if (!current?.serial || !renameTarget) return
           const parentPath = renameTarget.path.substring(0, renameTarget.path.lastIndexOf('/'))
-          await window.api.rename(current.serial, renameTarget.path, `${parentPath}/${name}`)
-          useFileStore.getState().loadCurrentPath(current.serial)
+          const newPath = `${parentPath}/${name}`
+          await window.api.rename(current.serial, renameTarget.path, newPath)
+          useFileStore.getState().updateFileInList(renameTarget.path, { name, path: newPath })
           setRenameTarget(null)
         }}
         onCancel={() => setRenameTarget(null)}

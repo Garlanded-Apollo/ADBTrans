@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 const api = {
   checkAdb: (): Promise<{ available: boolean; version: string; path: string }> =>
@@ -43,6 +43,9 @@ const api = {
     ipcRenderer.invoke('dialog:select-upload-directory'),
   startDrag: (serial: string, remotePath: string, fileName: string): void => {
     ipcRenderer.send('adb:start-drag', serial, remotePath, fileName)
+  },
+  getFilePath: (file: File): string => {
+    return webUtils.getPathForFile(file)
   },
 
   onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void): void => {

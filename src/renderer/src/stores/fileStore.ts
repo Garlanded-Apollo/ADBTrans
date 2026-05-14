@@ -18,6 +18,7 @@ interface FileStore {
   historyIndex: number
   loading: boolean
   error: string | null
+  pendingScrollTo: string | null
   setCurrentPath: (path: string) => void
   setFiles: (files: FileItem[]) => void
   setSelected: (file: FileItem | null) => void
@@ -26,6 +27,10 @@ interface FileStore {
   clearChecks: () => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+  setPendingScrollTo: (fileName: string | null) => void
+  updateFileInList: (oldPath: string, updates: Partial<FileItem>) => void
+  removeFilesFromList: (paths: string[]) => void
+  addFileToList: (file: FileItem) => void
   pushHistory: (path: string) => void
   goBack: () => string | null
   goForward: () => string | null
@@ -44,12 +49,33 @@ export const useFileStore = create<FileStore>((set, get) => ({
   historyIndex: 0,
   loading: false,
   error: null,
+  pendingScrollTo: null,
 
   setCurrentPath: (path) => set({ currentPath: path }),
   setFiles: (files) => set({ files }),
   setSelected: (file) => set({ selected: file }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
+  setPendingScrollTo: (fileName) => set({ pendingScrollTo: fileName }),
+  updateFileInList: (oldPath, updates) => set((s) => ({
+    files: s.files.map((f) => f.path === oldPath ? { ...f, ...updates } : f),
+    selected: s.selected?.path === oldPath ? { ...s.selected, ...updates } : s.selected
+  })),
+  removeFilesFromList: (paths) => set((s) => {
+    const pathSet = new Set(paths)
+    return {
+      files: s.files.filter((f) => !pathSet.has(f.path)),
+      selected: s.selected && pathSet.has(s.selected.path) ? null : s.selected,
+      checkedPaths: new Set([...s.checkedPaths].filter((p) => !pathSet.has(p)))
+    }
+  }),
+  addFileToList: (file) => set((s) => ({
+    files: [...s.files, file].sort((a, b) => {
+      if (a.type === 'folder' && b.type !== 'folder') return -1
+      if (a.type !== 'folder' && b.type === 'folder') return 1
+      return a.name.localeCompare(b.name)
+    })
+  })),
 
   toggleCheck: (path) => set((s) => {
     const next = new Set(s.checkedPaths)

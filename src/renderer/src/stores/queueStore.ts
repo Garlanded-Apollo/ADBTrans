@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useFileStore } from './fileStore'
 
 export interface QueueTask {
   id: string
@@ -57,7 +58,16 @@ export function initTransferListeners(): void {
   })
 
   window.api.onTransferDone(({ id }) => {
+    const task = useQueueStore.getState().tasks.find((t) => t.id === id)
     useQueueStore.getState().updateTask(id, { status: 'done', progress: 100, speed: '--' })
+
+    if (task?.direction === 'push') {
+      const fileStore = useFileStore.getState()
+      fileStore.loadCurrentPath(task.serial).then(() => {
+        useFileStore.getState().setPendingScrollTo(task.fileName)
+      })
+    }
+
     const next = useQueueStore.getState().startNextPending()
     if (next) executeTask(next)
   })
