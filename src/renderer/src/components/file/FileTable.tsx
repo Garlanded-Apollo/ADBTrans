@@ -499,9 +499,12 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                   key={item.path}
                   data-path={item.path}
                   className={cn(
-                    'border-b cursor-pointer select-none transition-colors hover:bg-muted/50',
-                    selected?.path === item.path && !showCheckboxes && 'bg-primary/10',
-                    isChecked && showCheckboxes && 'bg-primary/10'
+                    'border-b cursor-pointer select-none transition-colors',
+                    selected?.path === item.path && !showCheckboxes
+                      ? 'bg-primary/15 hover:bg-primary/15'
+                      : isChecked && showCheckboxes
+                        ? 'bg-primary/15 hover:bg-primary/15'
+                        : 'hover:bg-muted/50'
                   )}
                   draggable
                   onMouseDown={() => handleMouseDown(item, index)}
