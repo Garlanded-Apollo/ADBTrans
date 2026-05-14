@@ -23,6 +23,7 @@ interface ElectronAPI {
   getFileBase64: (serial: string, remotePath: string) => Promise<string>
   selectDirectory: () => Promise<string | null>
   selectFiles: () => Promise<string[] | null>
+  selectUploadDirectory: () => Promise<string | null>
   startDrag: (serial: string, remotePath: string, fileName: string) => void
 
   onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void) => void

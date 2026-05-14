@@ -136,6 +136,15 @@ function registerIpcHandlers(): void {
     return result.filePaths
   })
 
+  ipcMain.handle('dialog:select-upload-directory', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
   ipcMain.on('adb:start-drag', async (_e, serial: string, remotePath: string, fileName: string) => {
     const tempDir = join(tmpdir(), 'adbtrans-drag')
     const tempFile = join(tempDir, fileName)

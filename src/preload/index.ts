@@ -39,6 +39,8 @@ const api = {
     ipcRenderer.invoke('dialog:select-directory'),
   selectFiles: (): Promise<string[] | null> =>
     ipcRenderer.invoke('dialog:select-files'),
+  selectUploadDirectory: (): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:select-upload-directory'),
   startDrag: (serial: string, remotePath: string, fileName: string): void => {
     ipcRenderer.send('adb:start-drag', serial, remotePath, fileName)
   },

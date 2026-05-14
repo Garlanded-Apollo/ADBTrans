@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, ArrowRight, Home, Search, FolderUp, FolderDown, Trash2, Star } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Home, Search, FolderUp, FolderDown, Trash2, Star, FileUp, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
@@ -88,6 +88,23 @@ export function Toolbar(): JSX.Element {
     if (next) executeTask(next)
   }
 
+  const handleUploadFolder = async (): Promise<void> => {
+    if (!current?.serial) return
+    const folderPath = await window.api.selectUploadDirectory()
+    if (!folderPath) return
+    const folderName = folderPath.split('/').pop() || folderPath
+    const remotePath = `${currentPath}/${folderName}`
+    addTask({
+      serial: current.serial,
+      fileName: folderName,
+      fromPath: folderPath,
+      toPath: remotePath,
+      direction: 'push'
+    })
+    const next = startNextPending()
+    if (next) executeTask(next)
+  }
+
   const handleAddBookmark = (): void => {
     const defaultName = currentPath.split('/').pop() || currentPath
     setBookmarkLabel(defaultName)
@@ -143,6 +160,9 @@ export function Toolbar(): JSX.Element {
       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate('/storage/emulated/0')}>
         <Home className="h-3.5 w-3.5" />
       </Button>
+      <Button variant="ghost" size="icon" className="h-7 w-7" title="刷新" onClick={() => current?.serial && useFileStore.getState().loadCurrentPath(current.serial)} disabled={!current}>
+        <RefreshCw className="h-3.5 w-3.5" />
+      </Button>
       <div className="relative flex-1">
         <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input className="h-7 pl-8 text-xs" value={inputPath} onChange={(e) => setInputPath(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && navigate(inputPath)} placeholder="/storage/emulated/0" />
@@ -161,7 +181,10 @@ export function Toolbar(): JSX.Element {
         <span className="shrink-0 text-[10px] text-primary">已选 {checkedCount} 项</span>
       )}
       <Separator orientation="vertical" className="mx-1 h-5" />
-      <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" title="上传到手机" onClick={handleUpload} disabled={!current}>
+      <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" title="上传文件到手机" onClick={handleUpload} disabled={!current}>
+        <FileUp className="h-5 w-5" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" title="上传文件夹到手机" onClick={handleUploadFolder} disabled={!current}>
         <FolderUp className="h-5 w-5" />
       </Button>
       <Button
