@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Clock, FolderOpen, Star, HardDrive, Settings } from 'lucide-react'
+import { Clock, FolderOpen, Star, HardDrive, Pencil } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DeviceCard } from '@/components/device/DeviceCard'
@@ -46,7 +46,7 @@ export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
                 className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted"
                 onClick={() => setBookmarkDialogOpen(true)}
               >
-                <Settings className="h-3.5 w-3.5" />
+                <Pencil className="h-3.5 w-3.5" />
               </button>
             </div>
             <div className="max-h-[200px] overflow-y-auto">

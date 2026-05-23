@@ -53,6 +53,13 @@ const api = {
   getFilePath: (file: File): string => {
     return webUtils.getPathForFile(file)
   },
+  getAutoLaunch: (): Promise<boolean> =>
+    ipcRenderer.invoke('settings:get-auto-launch'),
+  setAutoLaunch: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('settings:set-auto-launch', enabled),
+  focusWindow: (): void => {
+    ipcRenderer.send('window:focus')
+  },
 
   onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void): void => {
     ipcRenderer.on('adb:transfer-progress', (_event, data) => callback(data))

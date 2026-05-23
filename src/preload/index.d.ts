@@ -29,6 +29,9 @@ interface ElectronAPI {
   listLocalDirectory: (dirPath: string) => Promise<{ name: string; isDirectory: boolean }[]>
   startDrag: (serial: string, remotePath: string, fileName: string) => void
   getFilePath: (file: File) => string
+  getAutoLaunch: () => Promise<boolean>
+  setAutoLaunch: (enabled: boolean) => Promise<void>
+  focusWindow: () => void
 
   onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void) => void
   onTransferDone: (callback: (data: { id: string }) => void) => void

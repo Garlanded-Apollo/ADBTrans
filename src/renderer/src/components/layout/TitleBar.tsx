@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Monitor, Settings, Smartphone, Usb, Wifi, Shield, ChevronDown, Unplug, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown-menu'
+import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { useDeviceStore } from '@/stores/deviceStore'
 
 interface TitleBarProps {
@@ -10,6 +12,7 @@ interface TitleBarProps {
 
 export function TitleBar({ onOpenWifiDialog }: TitleBarProps): JSX.Element {
   const { devices, current, adbStatus, setCurrent, disconnectDevice, refreshDevices } = useDeviceStore()
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const stateIcon = (state: string): JSX.Element => {
     if (state === 'device') return <Usb className="h-3 w-3 text-green-500" />
@@ -148,10 +151,11 @@ export function TitleBar({ onOpenWifiDialog }: TitleBarProps): JSX.Element {
             <span>{current.serial}</span>
           </div>
         )}
-        <Button variant="ghost" size="icon" className="h-7 w-7">
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSettingsOpen(true)}>
           <Settings className="h-3.5 w-3.5" />
         </Button>
       </div>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
 }

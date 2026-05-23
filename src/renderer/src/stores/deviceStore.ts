@@ -66,9 +66,13 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
     set({ isTracking: true })
     window.api.startDeviceTracking()
     window.api.onDeviceChanged((devices) => {
+      const prevDevices = get().devices
+      const prevConnected = prevDevices.filter((d) => d.state === 'device').map((d) => d.serial)
+
       set({ devices })
       const { current } = get()
       const connected = devices.filter((d) => d.state === 'device')
+      const newConnected = connected.filter((d) => !prevConnected.includes(d.serial))
 
       if (current) {
         const stillConnected = connected.find((d) => d.serial === current.serial)
@@ -77,6 +81,14 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
         }
       } else if (connected.length > 0) {
         set({ current: connected[0] })
+      }
+
+      if (newConnected.length > 0) {
+        window.api.getAutoLaunch().then((enabled) => {
+          if (enabled) {
+            window.api.focusWindow()
+          }
+        })
       }
     })
   },

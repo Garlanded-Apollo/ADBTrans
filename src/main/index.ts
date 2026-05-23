@@ -50,6 +50,26 @@ function registerIpcHandlers(): void {
   ipcMain.handle('adb:root', async (_e, serial: string) => adbService.root(serial))
   ipcMain.handle('adb:remount', async (_e, serial: string) => adbService.remount(serial))
 
+  ipcMain.handle('settings:get-auto-launch', () => {
+    const settings = app.getLoginItemSettings()
+    return settings.openAtLogin
+  })
+
+  ipcMain.handle('settings:set-auto-launch', (_e, enabled: boolean) => {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: app.getPath('exe')
+    })
+  })
+
+  ipcMain.on('window:focus', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+      mainWindow.show()
+    }
+  })
+
   ipcMain.handle('adb:pull', async (_e, id: string, serial: string, remotePath: string, localPath: string) => {
     const expectedSize = await adbService.getPathSize(serial, remotePath)
     adbService.startTransferWithProgress(id, ['-s', serial, 'pull', remotePath, localPath], localPath, expectedSize, {
