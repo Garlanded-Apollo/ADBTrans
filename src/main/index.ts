@@ -47,9 +47,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle('adb:start-tracking', () => adbService.startTracking())
   ipcMain.handle('adb:stop-tracking', () => adbService.stopTracking())
   ipcMain.handle('adb:ls', (_e, serial: string, path: string) => adbService.listFiles(serial, path))
+  ipcMain.handle('adb:root', async (_e, serial: string) => adbService.root(serial))
+  ipcMain.handle('adb:remount', async (_e, serial: string) => adbService.remount(serial))
 
-  ipcMain.handle('adb:pull', (_e, id: string, serial: string, remotePath: string, localPath: string) => {
-    adbService.startTransfer(id, ['-s', serial, 'pull', remotePath, localPath], {
+  ipcMain.handle('adb:pull', async (_e, id: string, serial: string, remotePath: string, localPath: string) => {
+    const expectedSize = await adbService.getPathSize(serial, remotePath)
+    adbService.startTransferWithProgress(id, ['-s', serial, 'pull', remotePath, localPath], localPath, expectedSize, {
       onProgress: (percent, speed) => {
         mainWindow?.webContents.send('adb:transfer-progress', { id, percent, speed })
       },
@@ -62,8 +65,35 @@ function registerIpcHandlers(): void {
     })
   })
 
-  ipcMain.handle('adb:push', (_e, id: string, serial: string, localPath: string, remotePath: string) => {
-    adbService.startTransfer(id, ['-s', serial, 'push', localPath, remotePath], {
+  ipcMain.handle('adb:push', async (_e, id: string, serial: string, localPath: string, remotePath: string) => {
+    const { statSync } = require('fs')
+    let expectedSize = 0
+    try {
+      const stat = statSync(localPath)
+      if (stat.isDirectory()) {
+        const getDirSize = (dir: string): number => {
+          let size = 0
+          try {
+            const { readdirSync } = require('fs')
+            const entries = readdirSync(dir, { withFileTypes: true } as any)
+            for (const entry of entries) {
+              const fullPath = require('path').join(dir, entry.name)
+              if (entry.isDirectory()) {
+                size += getDirSize(fullPath)
+              } else {
+                try { size += statSync(fullPath).size } catch { /* skip */ }
+              }
+            }
+          } catch { /* skip */ }
+          return size
+        }
+        expectedSize = getDirSize(localPath)
+      } else {
+        expectedSize = stat.size
+      }
+    } catch { /* ignore */ }
+
+    adbService.startTransferWithProgress(id, ['-s', serial, 'push', localPath, remotePath], localPath, expectedSize, {
       onProgress: (percent, speed) => {
         mainWindow?.webContents.send('adb:transfer-progress', { id, percent, speed })
       },
@@ -143,6 +173,23 @@ function registerIpcHandlers(): void {
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
+  })
+
+  ipcMain.handle('fs:list-directory', async (_e, dirPath: string) => {
+    const { readdirSync, statSync } = require('fs')
+    try {
+      const entries = readdirSync(dirPath)
+      return entries.map((name: string) => {
+        try {
+          const stat = statSync(join(dirPath, name))
+          return { name, isDirectory: stat.isDirectory() }
+        } catch {
+          return { name, isDirectory: false }
+        }
+      })
+    } catch {
+      return []
+    }
   })
 
   ipcMain.on('adb:start-drag', async (_e, serial: string, remotePath: string, fileName: string) => {

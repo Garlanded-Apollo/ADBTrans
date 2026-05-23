@@ -13,7 +13,7 @@ import { useEffect } from 'react'
 export function Toolbar(): JSX.Element {
   const { currentPath, goBack, goForward, canGoBack, canGoForward, selected, checkedPaths, files, navigateTo } = useFileStore()
   const { current } = useDeviceStore()
-  const { addTask, startNextPending } = useQueueStore()
+  const { addTask, startAllPending } = useQueueStore()
   const { addBookmark, isBookmarked } = useBookmarkStore()
   const [inputPath, setInputPath] = useState(currentPath)
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
@@ -65,8 +65,8 @@ export function Toolbar(): JSX.Element {
         direction: 'pull'
       })
     }
-    const next = startNextPending()
-    if (next) executeTask(next)
+    const pending = startAllPending()
+    pending.forEach((t) => executeTask(t))
   }
 
   const handleUpload = async (): Promise<void> => {
@@ -84,16 +84,26 @@ export function Toolbar(): JSX.Element {
         direction: 'push'
       })
     }
-    const next = startNextPending()
-    if (next) executeTask(next)
+    const pending = startAllPending()
+    pending.forEach((t) => executeTask(t))
   }
 
   const handleUploadFolder = async (): Promise<void> => {
     if (!current?.serial) return
     const folderPath = await window.api.selectUploadDirectory()
     if (!folderPath) return
-    const folderName = folderPath.split('/').pop() || folderPath
+
+    const entries = await window.api.listLocalDirectory(folderPath)
+    const folderName = folderPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() || folderPath
     const remotePath = `${currentPath}/${folderName}`
+
+    if (entries.length === 0) {
+      await window.api.mkdir(current.serial, remotePath)
+      useFileStore.getState().setPendingScrollTo(folderName)
+      useFileStore.getState().loadCurrentPath(current.serial)
+      return
+    }
+
     addTask({
       serial: current.serial,
       fileName: folderName,
@@ -101,8 +111,8 @@ export function Toolbar(): JSX.Element {
       toPath: remotePath,
       direction: 'push'
     })
-    const next = startNextPending()
-    if (next) executeTask(next)
+    const pending = startAllPending()
+    pending.forEach((t) => executeTask(t))
   }
 
   const handleAddBookmark = (): void => {

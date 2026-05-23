@@ -12,6 +12,8 @@ interface ElectronAPI {
   stopDeviceTracking: () => void
   onDeviceChanged: (callback: (devices: DeviceInfo[]) => void) => void
   listFiles: (serial: string, path: string) => Promise<FileEntry[]>
+  adbRoot: (serial: string) => Promise<boolean>
+  adbRemount: (serial: string) => Promise<boolean>
 
   pullFile: (id: string, serial: string, remotePath: string, localPath: string) => void
   pushFile: (id: string, serial: string, localPath: string, remotePath: string) => void
@@ -24,6 +26,7 @@ interface ElectronAPI {
   selectDirectory: () => Promise<string | null>
   selectFiles: () => Promise<string[] | null>
   selectUploadDirectory: () => Promise<string | null>
+  listLocalDirectory: (dirPath: string) => Promise<{ name: string; isDirectory: boolean }[]>
   startDrag: (serial: string, remotePath: string, fileName: string) => void
   getFilePath: (file: File) => string
 

@@ -77,7 +77,7 @@ interface FileTableProps {
 export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath, pendingScrollTo, setPendingScrollTo } = useFileStore()
   const { current } = useDeviceStore()
-  const { addTask, startNextPending } = useQueueStore()
+  const { addTask, startAllPending } = useQueueStore()
   const [widths, setWidths] = useState<number[]>(DEFAULT_WIDTHS)
   const [keyword, setKeyword] = useState('')
   const [showCheckboxes, setShowCheckboxes] = useState(false)
@@ -282,9 +282,9 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         direction: 'pull'
       })
     }
-    const next = startNextPending()
-    if (next) executeTask(next)
-  }, [current?.serial, selected, checkedPaths, files, addTask, startNextPending])
+    const pending = startAllPending()
+    pending.forEach((t) => executeTask(t))
+  }, [current?.serial, selected, checkedPaths, files, addTask, startAllPending])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -306,9 +306,9 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         direction: 'push'
       })
     }
-    const next = startNextPending()
-    if (next) executeTask(next)
-  }, [current?.serial, currentPath, addTask, startNextPending])
+    const pending = startAllPending()
+    pending.forEach((t) => executeTask(t))
+  }, [current?.serial, currentPath, addTask, startAllPending])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()

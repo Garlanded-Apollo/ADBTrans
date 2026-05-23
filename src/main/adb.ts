@@ -163,7 +163,7 @@ function parseLsOutput(output: string, parentPath: string): FileEntry[] {
   entries.sort((a, b) => {
     if (a.type === 'folder' && b.type !== 'folder') return -1
     if (a.type !== 'folder' && b.type === 'folder') return 1
-    return a.name.localeCompare(b.name)
+    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
   })
   return entries
 }
@@ -222,6 +222,24 @@ export class AdbService extends EventEmitter {
       const output = await execAdb(['disconnect', serial])
       return { success: true, message: output }
     } catch (err) { return { success: false, message: (err as Error).message } }
+  }
+
+  async root(serial: string): Promise<boolean> {
+    try {
+      await execAdb(['-s', serial, 'root'], 10000)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async remount(serial: string): Promise<boolean> {
+    try {
+      await execAdb(['-s', serial, 'remount'], 10000)
+      return true
+    } catch {
+      return false
+    }
   }
 
   startTracking(): void {
@@ -309,8 +327,97 @@ export class AdbService extends EventEmitter {
     return parseLsOutput(output, cleanPath)
   }
 
+  async getPathSize(serial: string, remotePath: string): Promise<number> {
+    try {
+      const output = await execAdb(['-s', serial, 'shell', `du -sk "${remotePath}"`], 30000)
+      const match = output.match(/^(\d+)/)
+      return match ? parseInt(match[1], 10) * 1024 : 0
+    } catch {
+      return 0
+    }
+  }
+
+  startTransferWithProgress(
+    id: string,
+    args: string[],
+    localPath: string,
+    expectedSize: number,
+    callbacks: TransferCallbacks
+  ): void {
+    const adbPath = findAdb()
+    const proc = spawn(adbPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    this.activeTransfers.set(id, proc)
+
+    const startTime = Date.now()
+    let lastPercent = 0
+
+    const checkProgress = setInterval(() => {
+      try {
+        const { statSync, readdirSync } = require('fs')
+        let currentSize = 0
+
+        try {
+          const stat = statSync(localPath)
+          if (stat.isDirectory()) {
+            const getDirSize = (dir: string): number => {
+              let size = 0
+              try {
+                const entries = readdirSync(dir, { withFileTypes: true } as any)
+                for (const entry of entries) {
+                  const fullPath = require('path').join(dir, entry.name)
+                  if (entry.isDirectory()) {
+                    size += getDirSize(fullPath)
+                  } else {
+                    try { size += statSync(fullPath).size } catch { /* skip */ }
+                  }
+                }
+              } catch { /* skip */ }
+              return size
+            }
+            currentSize = getDirSize(localPath)
+          } else {
+            currentSize = stat.size
+          }
+        } catch { /* file not exists yet */ }
+
+        if (expectedSize > 0) {
+          const percent = Math.min(99, Math.round((currentSize / expectedSize) * 100))
+          if (percent !== lastPercent) {
+            lastPercent = percent
+            const elapsed = (Date.now() - startTime) / 1000
+            const speedBytesPerSec = elapsed > 0 ? currentSize / elapsed : 0
+            let speed: string
+            if (speedBytesPerSec >= 1024 * 1024) {
+              speed = `${(speedBytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
+            } else {
+              speed = `${(speedBytesPerSec / 1024).toFixed(1)} KB/s`
+            }
+            callbacks.onProgress(percent, speed)
+          }
+        }
+      } catch { /* ignore */ }
+    }, 500)
+
+    proc.on('close', (code) => {
+      clearInterval(checkProgress)
+      this.activeTransfers.delete(id)
+      if (code === 0) {
+        callbacks.onProgress(100, '--')
+        callbacks.onDone()
+      } else if (code !== null) {
+        callbacks.onError(`进程退出，代码: ${code}`)
+      }
+    })
+
+    proc.on('error', (err) => {
+      clearInterval(checkProgress)
+      this.activeTransfers.delete(id)
+      callbacks.onError(err.message)
+    })
+  }
+
   private parseProgress(line: string): { percent: number } | null {
-    const m = line.match(/\[\s*(\d+)%\]/)
+    const m = line.match(/\[\s*(\d+)%\]/) || line.match(/(\d+)%/)
     if (m) return { percent: parseInt(m[1], 10) }
     return null
   }

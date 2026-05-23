@@ -134,6 +134,18 @@ export const useFileStore = create<FileStore>((set, get) => ({
       set({ files: entries, loading: false })
     } catch (err) {
       const msg = (err as Error).message || '加载失败'
+      if (msg.includes('Permission denied') || msg.includes('permission denied')) {
+        try {
+          await window.api.adbRoot(serial)
+          await window.api.adbRemount(serial)
+          const entries = await window.api.listFiles(serial, currentPath)
+          set({ files: entries, loading: false })
+          return
+        } catch {
+          set({ files: [], loading: false, error: '权限不足，已尝试 root 但失败' })
+          return
+        }
+      }
       set({ files: [], loading: false, error: msg.includes('device') ? '设备未连接或离线' : msg })
     }
   }

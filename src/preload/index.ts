@@ -16,6 +16,10 @@ const api = {
   },
   listFiles: (serial: string, path: string): Promise<{ name: string; path: string; size: number; modified: string; type: string; permission: string }[]> =>
     ipcRenderer.invoke('adb:ls', serial, path),
+  adbRoot: (serial: string): Promise<boolean> =>
+    ipcRenderer.invoke('adb:root', serial),
+  adbRemount: (serial: string): Promise<boolean> =>
+    ipcRenderer.invoke('adb:remount', serial),
 
   pullFile: (id: string, serial: string, remotePath: string, localPath: string): void => {
     ipcRenderer.invoke('adb:pull', id, serial, remotePath, localPath)
@@ -41,6 +45,8 @@ const api = {
     ipcRenderer.invoke('dialog:select-files'),
   selectUploadDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke('dialog:select-upload-directory'),
+  listLocalDirectory: (dirPath: string): Promise<{ name: string; isDirectory: boolean }[]> =>
+    ipcRenderer.invoke('fs:list-directory', dirPath),
   startDrag: (serial: string, remotePath: string, fileName: string): void => {
     ipcRenderer.send('adb:start-drag', serial, remotePath, fileName)
   },
