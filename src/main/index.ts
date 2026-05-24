@@ -8,7 +8,17 @@ import { tmpdir } from 'os'
 
 let mainWindow: BrowserWindow | null = null
 
+function getIconPath(): string {
+  const baseDir = is.dev ? process.cwd() : app.getAppPath()
+  const icnsPath = join(baseDir, 'resources/icon.icns')
+  const pngPath = join(baseDir, 'resources/icon.png')
+  if (existsSync(icnsPath)) return icnsPath
+  return pngPath
+}
+
 function createWindow(): void {
+  const iconPath = getIconPath()
+  const appIcon = nativeImage.createFromPath(iconPath)
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -16,6 +26,7 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
+    icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -241,6 +252,10 @@ function registerIpcHandlers(): void {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin' && app.dock) {
+    const iconPath = getIconPath()
+    app.dock.setIcon(nativeImage.createFromPath(iconPath))
+  }
   registerIpcHandlers()
   createWindow()
   app.on('activate', () => {
