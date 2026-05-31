@@ -9,9 +9,16 @@ import { tmpdir } from 'os'
 let mainWindow: BrowserWindow | null = null
 
 function getIconPath(): string {
-  const baseDir = is.dev ? process.cwd() : app.getAppPath()
-  const icnsPath = join(baseDir, 'resources/icon.icns')
-  const pngPath = join(baseDir, 'resources/icon.png')
+  if (!app.isPackaged) {
+    const baseDir = process.cwd()
+    const icnsPath = join(baseDir, 'resources/icon.icns')
+    const pngPath = join(baseDir, 'resources/icon.png')
+    if (existsSync(icnsPath)) return icnsPath
+    return pngPath
+  }
+  const resourcesPath = process.resourcesPath
+  const icnsPath = join(resourcesPath, 'icon.icns')
+  const pngPath = join(resourcesPath, 'icon.png')
   if (existsSync(icnsPath)) return icnsPath
   return pngPath
 }

@@ -31,7 +31,7 @@ export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
   }
 
   return (
-    <aside className="flex w-[260px] flex-col border-r bg-muted/20">
+    <aside className="flex w-[260px] flex-col border-r bg-muted/20 overflow-hidden">
       <ScrollArea className="flex-1">
         <div className="space-y-4 p-3">
           <DeviceCard onOpenWifiDialog={onOpenWifiDialog} />

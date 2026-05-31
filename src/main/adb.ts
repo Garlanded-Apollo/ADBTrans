@@ -1,6 +1,8 @@
 import { execFile, spawn } from 'child_process'
 import { EventEmitter } from 'events'
-import { basename } from 'path'
+import { basename, join } from 'path'
+import { existsSync } from 'fs'
+import { app } from 'electron'
 
 export interface DeviceInfo {
   serial: string
@@ -36,6 +38,24 @@ export interface TransferCallbacks {
   onError: (err: string) => void
 }
 
+function getBundledAdbPath(): string {
+  const isDev = !app.isPackaged
+  
+  if (isDev) {
+    const baseDir = process.cwd()
+    if (process.platform === 'win32') {
+      return join(baseDir, 'resources/adb/win/adb.exe')
+    }
+    return join(baseDir, 'resources/adb/mac/adb')
+  }
+  
+  const resourcesPath = process.resourcesPath
+  if (process.platform === 'win32') {
+    return join(resourcesPath, 'adb/adb.exe')
+  }
+  return join(resourcesPath, 'adb/adb')
+}
+
 const COMMON_PATHS = [
   '/opt/homebrew/bin/adb',
   '/usr/local/bin/adb',
@@ -45,16 +65,22 @@ const COMMON_PATHS = [
 ]
 
 function findAdb(): string {
+  const bundled = getBundledAdbPath()
+  if (existsSync(bundled)) {
+    console.log('[findAdb] using bundled:', bundled)
+    return bundled
+  }
+
   const cmd = process.platform === 'win32' ? 'adb.exe' : 'adb'
   const sep = process.platform === 'win32' ? ';' : ':'
   for (const dir of (process.env.PATH || '').split(sep)) {
     try {
-      const full = require('path').join(dir, cmd)
-      if (require('fs').existsSync(full)) return full
+      const full = join(dir, cmd)
+      if (existsSync(full)) return full
     } catch { continue }
   }
   for (const p of COMMON_PATHS) {
-    try { if (require('fs').existsSync(p)) return p } catch { continue }
+    try { if (existsSync(p)) return p } catch { continue }
   }
   return cmd
 }

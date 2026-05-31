@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Image, File, Info, Loader2 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
@@ -136,9 +135,9 @@ export function PreviewPanel(): JSX.Element {
   // 图片类型：预览+信息合并显示
   if (previewType === 'image') {
     return (
-      <div className="flex h-full w-full flex-col border-l">
-        <ScrollArea className="flex-1">
-          <div className="p-4">
+      <div className="flex h-full w-full flex-col border-l overflow-hidden">
+        <div className="flex-1 overflow-auto min-h-0 px-3 py-2">
+          <div>
             {loading ? (
               <div className="flex min-h-[200px] items-center justify-center">
                 <div className="text-center">
@@ -173,7 +172,7 @@ export function PreviewPanel(): JSX.Element {
           </div>
           <Separator />
           <FileInfo file={previewFile} />
-        </ScrollArea>
+        </div>
       </div>
     )
   }
@@ -181,17 +180,17 @@ export function PreviewPanel(): JSX.Element {
   // 文本类型：两个Tab
   if (previewType === 'text') {
     return (
-      <div className="flex h-full w-full flex-col border-l">
-        <Tabs defaultValue="preview" className="flex flex-1 flex-col">
+      <div className="flex h-full w-full flex-col border-l overflow-hidden">
+        <Tabs defaultValue="preview" className="flex flex-1 flex-col min-h-0">
           <div className="border-b px-3 pt-2">
             <TabsList className="h-8">
               <TabsTrigger value="preview" className="text-xs px-2.5">预览</TabsTrigger>
               <TabsTrigger value="info" className="text-xs px-2.5">信息</TabsTrigger>
             </TabsList>
           </div>
-          <TabsContent value="preview" className="flex-1 m-0">
-            <ScrollArea className="h-full">
-              <div className="p-4">
+          <TabsContent value="preview" className="flex-1 m-0 overflow-hidden">
+            <div className="h-full overflow-auto px-3 py-2">
+              <div>
                 {loading ? (
                   <div className="flex min-h-[200px] items-center justify-center">
                     <div className="text-center">
@@ -219,12 +218,12 @@ export function PreviewPanel(): JSX.Element {
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
-          <TabsContent value="info" className="flex-1 m-0">
-            <ScrollArea className="h-full">
+          <TabsContent value="info" className="flex-1 m-0 overflow-hidden">
+            <div className="h-full overflow-auto">
               <FileInfo file={previewFile} />
-            </ScrollArea>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
@@ -233,10 +232,10 @@ export function PreviewPanel(): JSX.Element {
 
   // 其他类型/文件夹：只显示信息
   return (
-    <div className="flex h-full w-full flex-col border-l">
-      <ScrollArea className="flex-1">
+    <div className="flex h-full w-full flex-col border-l overflow-hidden">
+      <div className="flex-1 overflow-auto min-h-0">
         <FileInfo file={previewFile} />
-      </ScrollArea>
+      </div>
     </div>
   )
 }

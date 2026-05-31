@@ -50,8 +50,31 @@
       "output": "release"
     },
     "files": [
-      "out/**/*",
-      "resources/**/*"
+      "out/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/icon.icns",
+        "to": "icon.icns",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/adb/mac",
+        "to": "adb",
+        "filter": ["**/*"],
+        "platform": "darwin"
+      },
+      {
+        "from": "resources/adb/win",
+        "to": "adb",
+        "filter": ["**/*"],
+        "platform": "win32"
+      }
     ],
     "mac": {
       "icon": "resources/icon.icns",
