@@ -53,9 +53,7 @@
 ## 环境要求
 
 - **Node.js** >= 18
-- **ADB** (Android Debug Bridge) — 需已安装并添加到系统 PATH
-  - macOS: `brew install android-platform-tools`
-  - Windows: 下载 [Google Platform Tools](https://developer.android.com/tools/releases/platform-tools) 并添加到 PATH
+- **ADB** — 已内置在 `resources/adb/` 目录，无需额外安装
 - **Android 手机** — 已开启 USB 调试
 
 ## 快速开始
@@ -67,12 +65,26 @@ npm install
 # 启动开发模式
 npm run dev
 
-# 构建
-npm run build
-
 # 类型检查
 npm run typecheck
 ```
+
+## 打包
+
+```bash
+# 打包 macOS 版本（仅包含 mac adb，约 116MB）
+npm run dist:mac
+
+# 打包 Windows 版本（仅包含 win adb）
+npm run dist:win
+
+# 打包所有平台版本（包含 mac + win adb，约 123MB）
+npm run dist
+```
+
+打包产物位于 `release/` 目录：
+- macOS: `ADBTrans-{version}-arm64.dmg`
+- Windows: `ADBTrans-{version}-Setup.exe`
 
 ## 项目结构
 
@@ -115,7 +127,13 @@ ADBTrans/
 │               ├── bookmark/        # 书签管理
 │               │   └── BookmarkDialog.tsx  # 收藏管理对话框
 │               └── ui/              # 基础 UI 组件（shadcn/ui）
-├── resources/                # 应用图标等资源
+├── resources/                # 应用图标、ADB 工具等资源
+│   ├── icon.icns            # macOS 应用图标
+│   ├── icon.png             # 通用应用图标
+│   └── adb/                 # 内置 ADB 工具
+│       ├── mac/             # macOS 版本
+│       └── win/             # Windows 版本
+├── scripts/                 # 构建脚本
 ├── electron.vite.config.ts
 ├── tailwind.config.js
 └── package.json
@@ -164,7 +182,7 @@ ADBTrans/
 | M3 | pull / push 实现，进度展示，传输队列 | ✅ |
 | M4 | 图片和文本预览，图片缩略图，文件信息面板 | ✅ |
 | M5 | 拖拽传输、增删改操作、无线连接、书签收藏 | ✅ |
-| M6 | electron-builder 配置，macOS + Windows 安装包 | 🔲 |
+| M6 | electron-builder 配置，macOS + Windows 安装包 | ✅ |
 
 ## License
 

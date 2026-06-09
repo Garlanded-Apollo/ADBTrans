@@ -1,6 +1,6 @@
 {
   "name": "adbtrans",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "ADB-based file transfer tool between computer and Android phone",
   "main": "./out/main/index.js",
   "scripts": {
@@ -10,7 +10,9 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "dist": "electron-vite build && electron-builder"
+    "dist": "electron-vite build && electron-builder",
+    "dist:mac": "electron-vite build && node scripts/prepare-adb.js mac && electron-builder --mac; node scripts/restore-config.js",
+    "dist:win": "electron-vite build && node scripts/prepare-adb.js win && electron-builder --win; node scripts/restore-config.js"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -50,31 +52,8 @@
       "output": "release"
     },
     "files": [
-      "out/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "resources/icon.icns",
-        "to": "icon.icns",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "resources/icon.png",
-        "to": "icon.png",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "resources/adb/mac",
-        "to": "adb",
-        "filter": ["**/*"],
-        "platform": "darwin"
-      },
-      {
-        "from": "resources/adb/win",
-        "to": "adb",
-        "filter": ["**/*"],
-        "platform": "win32"
-      }
+      "out/**/*",
+      "resources/**/*"
     ],
     "mac": {
       "icon": "resources/icon.icns",
@@ -87,8 +66,16 @@
     },
     "dmg": {
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     }
   }
