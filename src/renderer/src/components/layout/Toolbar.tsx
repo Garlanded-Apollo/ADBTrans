@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useQueueStore, executeTask } from '@/stores/queueStore'
@@ -18,6 +19,7 @@ export function Toolbar(): JSX.Element {
   const [inputPath, setInputPath] = useState(currentPath)
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [bookmarkLabel, setBookmarkLabel] = useState('')
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   useEffect(() => { setInputPath(currentPath) }, [currentPath])
 
@@ -129,7 +131,7 @@ export function Toolbar(): JSX.Element {
     }
   }
 
-  const handleDelete = async (): Promise<void> => {
+  const handleDelete = (): void => {
     if (!current?.serial) return
 
     const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
@@ -140,10 +142,19 @@ export function Toolbar(): JSX.Element {
         : []
 
     if (targetFiles.length === 0) return
+    setDeleteConfirmOpen(true)
+  }
 
-    const names = targetFiles.map((f) => f.name).join('\n')
-    const ok = window.confirm(`确定要删除以下文件吗？\n\n${names}`)
-    if (!ok) return
+  const confirmDelete = async (): Promise<void> => {
+    if (!current?.serial) return
+    setDeleteConfirmOpen(false)
+
+    const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
+    const targetFiles = checkedFiles.length > 0
+      ? checkedFiles
+      : selected
+        ? [selected]
+        : []
 
     for (const f of targetFiles) {
       try {
@@ -227,6 +238,23 @@ export function Toolbar(): JSX.Element {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="确认删除"
+        message={(() => {
+          const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
+          const targetFiles = checkedFiles.length > 0
+            ? checkedFiles
+            : selected
+              ? [selected]
+              : []
+          return `确定要删除以下文件吗？\n\n${targetFiles.map((f) => f.name).join('\n')}`
+        })()}
+        confirmLabel="删除"
+        destructive
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   )
 }
