@@ -46,7 +46,7 @@ function App(): JSX.Element {
               <FileTable onOpenFolder={handleOpenFolder} />
             </Panel>
             <PanelResizeHandle className="w-[3px] bg-border hover:bg-primary transition-colors" />
-            <Panel defaultSize={35} minSize={20}>
+            <Panel defaultSize={25} minSize={20}>
               <PreviewPanel />
             </Panel>
           </PanelGroup>

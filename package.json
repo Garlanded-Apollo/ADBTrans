@@ -11,8 +11,8 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "dist": "electron-vite build && electron-builder",
-    "dist:mac": "electron-vite build && node scripts/prepare-adb.js mac && electron-builder --mac; node scripts/restore-config.js",
-    "dist:win": "electron-vite build && node scripts/prepare-adb.js win && electron-builder --win; node scripts/restore-config.js"
+    "dist:mac": "electron-vite build && node scripts/build-dist.js mac",
+    "dist:win": "electron-vite build && node scripts/build-dist.js win"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -55,14 +55,35 @@
       "out/**/*",
       "resources/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "resources/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "resources/icon.icns",
+        "to": "icon.icns"
+      }
+    ],
     "mac": {
       "icon": "resources/icon.icns",
       "target": "dmg",
       "identity": null
     },
     "win": {
-      "icon": "resources/icon.png",
+      "icon": "resources/icon.ico",
       "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico"
     },
     "dmg": {
       "contents": [

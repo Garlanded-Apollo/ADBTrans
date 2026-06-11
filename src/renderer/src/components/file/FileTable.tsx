@@ -11,19 +11,26 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const INITIAL_BATCH = 50
 const LOAD_MORE_BATCH = 30
+const INTERNAL_FILE_DRAG_TYPE = 'application/x-adbtrans-remote-file'
+
+function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
+  const types = Array.from(dataTransfer.types)
+  return types.includes('Files') && !types.includes(INTERNAL_FILE_DRAG_TYPE)
+}
 
 function getFileIcon(item: FileItem): JSX.Element {
-  if (item.type === 'folder') return <Folder className="h-4 w-4 text-blue-500" />
-  if (item.type === 'symlink') return <File className="h-4 w-4 text-purple-500" />
+  const iconClass = 'h-4 w-4 shrink-0'
+  if (item.type === 'folder') return <Folder className={cn(iconClass, 'text-blue-500')} />
+  if (item.type === 'symlink') return <File className={cn(iconClass, 'text-purple-500')} />
   const ext = item.name.split('.').pop()?.toLowerCase() || ''
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return <Image className="h-4 w-4 text-green-500" />
-  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return <Film className="h-4 w-4 text-purple-500" />
-  if (['mp3', 'wav', 'flac', 'aac', 'ogg'].includes(ext)) return <Music className="h-4 w-4 text-pink-500" />
-  if (['json'].includes(ext)) return <FileJson className="h-4 w-4 text-yellow-500" />
-  if (['xml', 'html', 'css', 'js', 'ts', 'py', 'java', 'kt'].includes(ext)) return <FileCode className="h-4 w-4 text-cyan-500" />
-  if (['txt', 'log', 'md', 'csv'].includes(ext)) return <FileText className="h-4 w-4 text-muted-foreground" />
-  if (['zip', 'tar', 'gz', 'rar', '7z', 'apk'].includes(ext)) return <Package className="h-4 w-4 text-orange-500" />
-  return <File className="h-4 w-4 text-muted-foreground" />
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return <Image className={cn(iconClass, 'text-green-500')} />
+  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return <Film className={cn(iconClass, 'text-purple-500')} />
+  if (['mp3', 'wav', 'flac', 'aac', 'ogg'].includes(ext)) return <Music className={cn(iconClass, 'text-pink-500')} />
+  if (['json'].includes(ext)) return <FileJson className={cn(iconClass, 'text-yellow-500')} />
+  if (['xml', 'html', 'css', 'js', 'ts', 'py', 'java', 'kt'].includes(ext)) return <FileCode className={cn(iconClass, 'text-cyan-500')} />
+  if (['txt', 'log', 'md', 'csv'].includes(ext)) return <FileText className={cn(iconClass, 'text-muted-foreground')} />
+  if (['zip', 'tar', 'gz', 'rar', '7z', 'apk'].includes(ext)) return <Package className={cn(iconClass, 'text-orange-500')} />
+  return <File className={cn(iconClass, 'text-muted-foreground')} />
 }
 
 const CHECKBOX_WIDTH = 3
@@ -43,13 +50,13 @@ const columns: ColumnDef[] = [
     key: 'name',
     label: '名称',
     render: (item) => (
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         {isImageFile(item.name) && item.type !== 'folder' ? (
           <Thumbnail path={item.path} name={item.name} />
         ) : (
           getFileIcon(item)
         )}
-        <span className="truncate">{item.name}</span>
+        <span className="min-w-0 truncate">{item.name}</span>
       </div>
     )
   },
@@ -297,6 +304,11 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   }, [current?.serial, selected, checkedPaths, files, addTask, startAllPending])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
+    if (!isExternalFileDrag(e.dataTransfer)) {
+      setDragOver(false)
+      return
+    }
+
     e.preventDefault()
     setDragOver(false)
     if (!current?.serial) return
@@ -321,9 +333,15 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   }, [current?.serial, currentPath, addTask, startAllPending])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!isExternalFileDrag(e.dataTransfer)) {
+      if (dragOver) setDragOver(false)
+      return
+    }
+
     e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
     setDragOver(true)
-  }, [])
+  }, [dragOver])
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     if (e.currentTarget.contains(e.relatedTarget as Node)) return
@@ -337,6 +355,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       return
     }
     e.dataTransfer.effectAllowed = 'copy'
+    e.dataTransfer.setData(INTERNAL_FILE_DRAG_TYPE, item.path)
     e.dataTransfer.setData('text/plain', item.name)
     window.api.startDrag(current.serial, item.path, item.name)
   }, [current?.serial])

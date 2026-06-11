@@ -98,7 +98,7 @@ export const Thumbnail = memo(function Thumbnail({ path, name }: ThumbnailProps)
   ), [])
 
   if (error || !current || current.state !== 'device') {
-    return <div ref={containerRef}>{renderIcon()}</div>
+    return <div ref={containerRef} className="h-8 w-8 shrink-0">{renderIcon()}</div>
   }
 
   if (!shouldLoad || loading) {
@@ -114,11 +114,11 @@ export const Thumbnail = memo(function Thumbnail({ path, name }: ThumbnailProps)
   }
 
   if (!src) {
-    return <div ref={containerRef}>{renderIcon()}</div>
+    return <div ref={containerRef} className="h-8 w-8 shrink-0">{renderIcon()}</div>
   }
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} className="h-8 w-8 shrink-0">
       <img
         src={src}
         alt={name}

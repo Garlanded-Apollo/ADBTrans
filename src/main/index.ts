@@ -11,14 +11,18 @@ let mainWindow: BrowserWindow | null = null
 function getIconPath(): string {
   if (!app.isPackaged) {
     const baseDir = process.cwd()
+    const icoPath = join(baseDir, 'resources/icon.ico')
     const icnsPath = join(baseDir, 'resources/icon.icns')
     const pngPath = join(baseDir, 'resources/icon.png')
+    if (process.platform === 'win32' && existsSync(icoPath)) return icoPath
     if (existsSync(icnsPath)) return icnsPath
     return pngPath
   }
   const resourcesPath = process.resourcesPath
+  const icoPath = join(resourcesPath, 'icon.ico')
   const icnsPath = join(resourcesPath, 'icon.icns')
   const pngPath = join(resourcesPath, 'icon.png')
+  if (process.platform === 'win32' && existsSync(icoPath)) return icoPath
   if (existsSync(icnsPath)) return icnsPath
   return pngPath
 }

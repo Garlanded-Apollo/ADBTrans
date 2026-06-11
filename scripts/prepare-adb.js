@@ -49,9 +49,22 @@ if (!pkg._originalBuild) {
 pkg.build.files = [
   'out/**/*',
   'resources/icon.icns',
+  'resources/icon.ico',
   'resources/icon.png'
 ]
 pkg.build.extraResources = [
+  {
+    from: 'resources/icon.png',
+    to: 'icon.png'
+  },
+  {
+    from: 'resources/icon.ico',
+    to: 'icon.ico'
+  },
+  {
+    from: 'resources/icon.icns',
+    to: 'icon.icns'
+  },
   {
     from: 'resources/adb-temp',
     to: 'adb'

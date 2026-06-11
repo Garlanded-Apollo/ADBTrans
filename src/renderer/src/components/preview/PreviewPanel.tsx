@@ -31,22 +31,22 @@ function getMimeType(name: string): string {
 
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }): JSX.Element {
   return (
-    <div className="flex items-start gap-3">
-      <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
-      <span className={`flex-1 break-all ${mono ? 'font-mono' : ''}`}>{value}</span>
+    <div className="flex min-w-0 items-start gap-2">
+      <span className="w-12 shrink-0 text-muted-foreground">{label}</span>
+      <span className={`min-w-0 flex-1 break-all ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   )
 }
 
 function FileInfo({ file }: { file: { name: string; path: string; type: string; size: number; modified: string; permission: string } }): JSX.Element {
   return (
-    <div className="space-y-3 p-4">
+    <div className="space-y-3 px-1 py-1">
       <div className="flex items-center gap-2">
         <Info className="h-4 w-4 text-muted-foreground" />
         <span className="text-xs font-medium">文件详情</span>
       </div>
       <Separator />
-      <div className="space-y-2.5 text-xs">
+      <div className="space-y-2.5 text-xs leading-relaxed">
         <InfoRow label="名称" value={file.name} />
         <InfoRow label="路径" value={file.path} />
         <InfoRow label="类型" value={file.type === 'folder' ? '文件夹' : (file.name.split('.').pop()?.toUpperCase() || '--')} />
