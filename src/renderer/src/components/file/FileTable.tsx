@@ -528,7 +528,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                   key={item.path}
                   data-path={item.path}
                   className={cn(
-                    'border-b cursor-pointer select-none transition-colors',
+                    'border-b cursor-default select-none transition-colors',
                     selected?.path === item.path && !showCheckboxes
                       ? 'bg-primary/15 hover:bg-primary/15'
                       : isChecked && showCheckboxes

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useHistoryStore } from './historyStore'
 
 export interface FileItem {
   name: string
@@ -128,6 +129,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
 
   loadCurrentPath: async (serial) => {
     const { currentPath } = get()
+    useHistoryStore.getState().addHistory(currentPath)
     set({ loading: true, error: null, checkedPaths: new Set() })
     try {
       const entries = await window.api.listFiles(serial, currentPath)
