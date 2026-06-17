@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { adbService } from './adb'
@@ -7,6 +7,22 @@ import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
 
 function getIconPath(): string {
   if (!app.isPackaged) {
@@ -15,6 +31,7 @@ function getIconPath(): string {
     const icnsPath = join(baseDir, 'resources/icon.icns')
     const pngPath = join(baseDir, 'resources/icon.png')
     if (process.platform === 'win32' && existsSync(icoPath)) return icoPath
+    if (process.platform === 'darwin' && existsSync(pngPath)) return pngPath
     if (existsSync(icnsPath)) return icnsPath
     return pngPath
   }
@@ -23,6 +40,7 @@ function getIconPath(): string {
   const icnsPath = join(resourcesPath, 'icon.icns')
   const pngPath = join(resourcesPath, 'icon.png')
   if (process.platform === 'win32' && existsSync(icoPath)) return icoPath
+  if (process.platform === 'darwin' && existsSync(pngPath)) return pngPath
   if (existsSync(icnsPath)) return icnsPath
   return pngPath
 }
@@ -48,6 +66,13 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  mainWindow.on('close', (event) => {
+    if (tray && !isQuitting) {
+      event.preventDefault()
+      mainWindow?.hide()
+    }
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -108,30 +133,34 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('adb:push', async (_e, id: string, serial: string, localPath: string, remotePath: string) => {
-    const { statSync } = require('fs')
+    const { stat } = require('fs').promises
     let expectedSize = 0
     try {
-      const stat = statSync(localPath)
-      if (stat.isDirectory()) {
-        const getDirSize = (dir: string): number => {
+      const st = await stat(localPath)
+      if (st.isDirectory()) {
+        const getDirSizeAsync = async (dir: string): Promise<number> => {
           let size = 0
           try {
-            const { readdirSync } = require('fs')
-            const entries = readdirSync(dir, { withFileTypes: true } as any)
+            const { readdir } = require('fs').promises
+            const { join } = require('path')
+            const entries = await readdir(dir, { withFileTypes: true } as any)
             for (const entry of entries) {
-              const fullPath = require('path').join(dir, entry.name)
-              if (entry.isDirectory()) {
-                size += getDirSize(fullPath)
-              } else {
-                try { size += statSync(fullPath).size } catch { /* skip */ }
-              }
+              const fullPath = join(dir, entry.name)
+              try {
+                const s = await stat(fullPath)
+                if (entry.isDirectory()) {
+                  size += await getDirSizeAsync(fullPath)
+                } else {
+                  size += s.size
+                }
+              } catch { /* skip */ }
             }
           } catch { /* skip */ }
           return size
         }
-        expectedSize = getDirSize(localPath)
+        expectedSize = await getDirSizeAsync(localPath)
       } else {
-        expectedSize = stat.size
+        expectedSize = st.size
       }
     } catch { /* ignore */ }
 
@@ -269,12 +298,47 @@ app.whenReady().then(() => {
   }
   registerIpcHandlers()
   createWindow()
+
+  const iconPath = getIconPath()
+  const trayIcon = nativeImage.createFromPath(iconPath)
+  const resizedIcon = trayIcon.resize({ width: 22, height: 22 })
+  if (process.platform === 'darwin') {
+    resizedIcon.setTemplateImage(true)
+  }
+  tray = new Tray(resizedIcon)
+  tray.setToolTip('ADBTrans')
+  tray.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide()
+      } else {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    }
+  })
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: '打开', click: () => mainWindow?.show() },
+    { type: 'separator' },
+    { label: '退出', click: () => { isQuitting = true; tray?.destroy(); app.quit() } }
+  ])
+  tray.setContextMenu(contextMenu)
+
+  app.on('before-quit', () => {
+    isQuitting = true
+  })
+
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+    } else {
+      createWindow()
+    }
   })
 })
 
 app.on('window-all-closed', () => {
   adbService.stopTracking()
-  if (process.platform !== 'darwin') app.quit()
 })

@@ -376,33 +376,42 @@ export class AdbService extends EventEmitter {
 
     const startTime = Date.now()
     let lastPercent = 0
+    let checking = false
 
-    const checkProgress = setInterval(() => {
+    const getDirSizeAsync = async (dir: string): Promise<number> => {
+      let size = 0
       try {
-        const { statSync, readdirSync } = require('fs')
+        const { readdir, stat } = require('fs').promises
+        const { join } = require('path')
+        const entries = await readdir(dir, { withFileTypes: true } as any)
+        for (const entry of entries) {
+          const fullPath = join(dir, entry.name)
+          try {
+            const st = await stat(fullPath)
+            if (entry.isDirectory()) {
+              size += await getDirSizeAsync(fullPath)
+            } else {
+              size += st.size
+            }
+          } catch { /* skip */ }
+        }
+      } catch { /* skip */ }
+      return size
+    }
+
+    const checkProgress = setInterval(async () => {
+      if (checking) return
+      checking = true
+      try {
+        const { stat } = require('fs').promises
         let currentSize = 0
 
         try {
-          const stat = statSync(localPath)
-          if (stat.isDirectory()) {
-            const getDirSize = (dir: string): number => {
-              let size = 0
-              try {
-                const entries = readdirSync(dir, { withFileTypes: true } as any)
-                for (const entry of entries) {
-                  const fullPath = require('path').join(dir, entry.name)
-                  if (entry.isDirectory()) {
-                    size += getDirSize(fullPath)
-                  } else {
-                    try { size += statSync(fullPath).size } catch { /* skip */ }
-                  }
-                }
-              } catch { /* skip */ }
-              return size
-            }
-            currentSize = getDirSize(localPath)
+          const st = await stat(localPath)
+          if (st.isDirectory()) {
+            currentSize = await getDirSizeAsync(localPath)
           } else {
-            currentSize = stat.size
+            currentSize = st.size
           }
         } catch { /* file not exists yet */ }
 
@@ -422,7 +431,8 @@ export class AdbService extends EventEmitter {
           }
         }
       } catch { /* ignore */ }
-    }, 500)
+      checking = false
+    }, 1000)
 
     proc.on('close', (code) => {
       clearInterval(checkProgress)
