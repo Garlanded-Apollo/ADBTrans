@@ -1,17 +1,22 @@
 import { useState } from 'react'
-import { ArrowLeft, ArrowRight, Home, Search, FolderUp, FolderDown, Trash2, Star, FileUp, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Home, Search, FolderDown, Star, Upload, RefreshCw, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownItem } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useQueueStore, executeTask } from '@/stores/queueStore'
 import { useBookmarkStore } from '@/stores/bookmarkStore'
 import { useEffect } from 'react'
 
-export function Toolbar(): JSX.Element {
+interface ToolbarProps {
+  previewOpen?: boolean
+  onTogglePreview?: () => void
+}
+
+export function Toolbar({ previewOpen = false, onTogglePreview }: ToolbarProps): JSX.Element {
   const { currentPath, goBack, goForward, canGoBack, canGoForward, selected, checkedPaths, files, navigateTo } = useFileStore()
   const { current } = useDeviceStore()
   const { addTask, startAllPending } = useQueueStore()
@@ -19,14 +24,16 @@ export function Toolbar(): JSX.Element {
   const [inputPath, setInputPath] = useState(currentPath)
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [bookmarkLabel, setBookmarkLabel] = useState('')
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
-  useEffect(() => { setInputPath(currentPath) }, [currentPath])
+  const toDisplayPath = (p: string): string => p.replace(/^\/storage\/emulated\/0(\/|$)/, '/sdcard$1')
+  const toRealPath = (p: string): string => p.replace(/^\/sdcard(\/|$)/, '/storage/emulated/0$1')
+
+  useEffect(() => { setInputPath(toDisplayPath(currentPath)) }, [currentPath])
 
   const navigate = (path: string): void => {
-    const trimmed = path.trim()
-    if (!trimmed || !current?.serial) return
-    navigateTo(trimmed, current.serial)
+    const realPath = toRealPath(path.trim())
+    if (!realPath || !current?.serial) return
+    navigateTo(realPath, current.serial)
   }
 
   const handleGoBack = (): void => {
@@ -131,42 +138,6 @@ export function Toolbar(): JSX.Element {
     }
   }
 
-  const handleDelete = (): void => {
-    if (!current?.serial) return
-
-    const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
-    const targetFiles = checkedFiles.length > 0
-      ? checkedFiles
-      : selected
-        ? [selected]
-        : []
-
-    if (targetFiles.length === 0) return
-    setDeleteConfirmOpen(true)
-  }
-
-  const confirmDelete = async (): Promise<void> => {
-    if (!current?.serial) return
-    setDeleteConfirmOpen(false)
-
-    const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
-    const targetFiles = checkedFiles.length > 0
-      ? checkedFiles
-      : selected
-        ? [selected]
-        : []
-
-    for (const f of targetFiles) {
-      try {
-        await window.api.deletePath(current.serial, f.path)
-      } catch (err) {
-        console.error('Delete failed:', err)
-      }
-    }
-    useFileStore.getState().removeFilesFromList(targetFiles.map((f) => f.path))
-  }
-
-  const checkedCount = files.filter((f) => checkedPaths.has(f.path)).length
   const bookmarked = isBookmarked(currentPath)
 
   return (
@@ -186,7 +157,7 @@ export function Toolbar(): JSX.Element {
       </Button>
       <div className="relative flex-1">
         <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input className="h-7 pl-8 text-xs" value={inputPath} onChange={(e) => setInputPath(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && navigate(inputPath)} placeholder="/storage/emulated/0" />
+        <Input className="h-7 pl-8 text-xs bg-muted/50 border-border/50 focus:border-primary/50" value={inputPath} onChange={(e) => setInputPath(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && navigate(inputPath)} placeholder="输入路径回车跳转..." />
       </div>
       <Button
         variant="ghost"
@@ -199,23 +170,37 @@ export function Toolbar(): JSX.Element {
         <Star className={`h-3.5 w-3.5 ${bookmarked ? 'fill-current' : ''}`} />
       </Button>
       <Separator orientation="vertical" className="mx-1 h-5" />
-      <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" title="上传文件到手机" onClick={handleUpload} disabled={!current}>
-        <FileUp className="h-5 w-5" />
-      </Button>
-      <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" title="上传文件夹到手机" onClick={handleUploadFolder} disabled={!current}>
-        <FolderUp className="h-5 w-5" />
-      </Button>
+      <DropdownMenu
+        align="end"
+        trigger={
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50" title="上传到手机" disabled={!current}>
+            <Upload className="h-4 w-4" strokeWidth={2.5} />
+          </Button>
+        }
+      >
+        <DropdownItem icon={<Upload className="h-4 w-4" strokeWidth={2.5} />} onClick={handleUpload}>上传文件</DropdownItem>
+        <DropdownItem icon={<Upload className="h-4 w-4" strokeWidth={2.5} />} onClick={handleUploadFolder}>上传文件夹</DropdownItem>
+      </DropdownMenu>
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+        className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
         title="下载到电脑"
         onClick={handleDownload}
-        disabled={checkedCount === 0 && !selected}
+        disabled={checkedPaths.size === 0 && !selected}
       >
         <FolderDown className="h-5 w-5" />
       </Button>
-      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除" onClick={handleDelete} disabled={checkedCount === 0 && !selected}><Trash2 className="h-4 w-4" /></Button>
+      <Separator orientation="vertical" className="mx-1 h-5" />
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+        title={previewOpen ? '关闭预览' : '打开预览'}
+        onClick={onTogglePreview}
+      >
+        {previewOpen ? <PanelRightClose className="h-5 w-5" /> : <PanelRightOpen className="h-5 w-5" />}
+      </Button>
 
       <Dialog open={bookmarkDialogOpen} onOpenChange={setBookmarkDialogOpen}>
         <DialogContent className="max-w-sm">
@@ -238,23 +223,6 @@ export function Toolbar(): JSX.Element {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <ConfirmDialog
-        open={deleteConfirmOpen}
-        title="确认删除"
-        message={(() => {
-          const checkedFiles = files.filter((f) => checkedPaths.has(f.path))
-          const targetFiles = checkedFiles.length > 0
-            ? checkedFiles
-            : selected
-              ? [selected]
-              : []
-          return `确定要删除以下文件吗？\n\n${targetFiles.map((f) => f.name).join('\n')}`
-        })()}
-        confirmLabel="删除"
-        destructive
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteConfirmOpen(false)}
-      />
     </div>
   )
 }

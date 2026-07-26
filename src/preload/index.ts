@@ -48,7 +48,10 @@ const api = {
   listLocalDirectory: (dirPath: string): Promise<{ name: string; isDirectory: boolean }[]> =>
     ipcRenderer.invoke('fs:list-directory', dirPath),
   startDrag: (serial: string, remotePath: string, fileName: string): void => {
-    ipcRenderer.send('adb:start-drag', serial, remotePath, fileName)
+    ipcRenderer.send('adb:download-for-drag', serial, remotePath, fileName)
+  },
+  dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string }>): void => {
+    ipcRenderer.send('adb:drag-download', serial, files)
   },
   getFilePath: (file: File): string => {
     return webUtils.getPathForFile(file)

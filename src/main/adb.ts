@@ -363,12 +363,44 @@ export class AdbService extends EventEmitter {
     }
   }
 
+  async countLocalFiles(dir: string): Promise<number> {
+    let count = 0
+    try {
+      const { readdir, stat } = require('fs').promises
+      const { join } = require('path')
+      const entries = await readdir(dir, { withFileTypes: true } as any)
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name)
+        try {
+          const st = await stat(fullPath)
+          if (st.isDirectory()) {
+            count += await this.countLocalFiles(fullPath)
+          } else {
+            count++
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+    return count
+  }
+
+  async countRemoteFiles(serial: string, remotePath: string): Promise<number> {
+    try {
+      const output = await execAdb(['-s', serial, 'shell', `find "${remotePath}" -type f | wc -l`], 30000)
+      return parseInt(output.trim(), 10) || 0
+    } catch {
+      return 0
+    }
+  }
+
   startTransferWithProgress(
     id: string,
     args: string[],
     localPath: string,
     expectedSize: number,
-    callbacks: TransferCallbacks
+    callbacks: TransferCallbacks,
+    isDirectory = false,
+    totalCount = 0
   ): void {
     const adbPath = findAdb()
     const proc = spawn(adbPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -377,6 +409,8 @@ export class AdbService extends EventEmitter {
     const startTime = Date.now()
     let lastPercent = 0
     let checking = false
+    let stderrData = ''
+    let retriedReadOnly = false
 
     const getDirSizeAsync = async (dir: string): Promise<number> => {
       let size = 0
@@ -403,36 +437,58 @@ export class AdbService extends EventEmitter {
       if (checking) return
       checking = true
       try {
-        const { stat } = require('fs').promises
-        let currentSize = 0
+        let percent = 0
+        let speed = '--'
 
-        try {
-          const st = await stat(localPath)
-          if (st.isDirectory()) {
-            currentSize = await getDirSizeAsync(localPath)
-          } else {
-            currentSize = st.size
-          }
-        } catch { /* file not exists yet */ }
-
-        if (expectedSize > 0) {
-          const percent = Math.min(99, Math.round((currentSize / expectedSize) * 100))
-          if (percent !== lastPercent) {
-            lastPercent = percent
-            const elapsed = (Date.now() - startTime) / 1000
-            const speedBytesPerSec = elapsed > 0 ? currentSize / elapsed : 0
-            let speed: string
-            if (speedBytesPerSec >= 1024 * 1024) {
-              speed = `${(speedBytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
-            } else {
-              speed = `${(speedBytesPerSec / 1024).toFixed(1)} KB/s`
+        if (isDirectory && totalCount > 0) {
+          // File count mode for directories
+          let currentCount = 0
+          try {
+            const { stat } = require('fs').promises
+            const st = await stat(localPath)
+            if (st.isDirectory()) {
+              currentCount = await this.countLocalFiles(localPath)
             }
-            callbacks.onProgress(percent, speed)
+          } catch { /* file not exists yet */ }
+
+          percent = Math.min(99, Math.round((currentCount / totalCount) * 100))
+          const elapsed = (Date.now() - startTime) / 1000
+          const filesPerSec = elapsed > 0 ? currentCount / elapsed : 0
+          speed = `${filesPerSec.toFixed(1)} 文件/s`
+        } else if (expectedSize > 0) {
+          // Size mode for single files
+          let currentSize = 0
+          try {
+            const { stat } = require('fs').promises
+            const st = await stat(localPath)
+            if (st.isDirectory()) {
+              currentSize = await getDirSizeAsync(localPath)
+            } else {
+              currentSize = st.size
+            }
+          } catch { /* file not exists yet */ }
+
+          percent = Math.min(99, Math.round((currentSize / expectedSize) * 100))
+          const elapsed = (Date.now() - startTime) / 1000
+          const speedBytesPerSec = elapsed > 0 ? currentSize / elapsed : 0
+          if (speedBytesPerSec >= 1024 * 1024) {
+            speed = `${(speedBytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
+          } else {
+            speed = `${(speedBytesPerSec / 1024).toFixed(1)} KB/s`
           }
+        }
+
+        if (percent !== lastPercent) {
+          lastPercent = percent
+          callbacks.onProgress(percent, speed)
         }
       } catch { /* ignore */ }
       checking = false
     }, 1000)
+
+    proc.stderr?.on('data', (data: Buffer) => {
+      stderrData += data.toString()
+    })
 
     proc.on('close', (code) => {
       clearInterval(checkProgress)
@@ -441,6 +497,23 @@ export class AdbService extends EventEmitter {
         callbacks.onProgress(100, '--')
         callbacks.onDone()
       } else if (code !== null) {
+        if (!retriedReadOnly && stderrData.includes('Read-only file system')) {
+          retriedReadOnly = true
+          const serial = args[1]
+          console.log(`[adb] push failed with Read-only file system, trying root + remount for device ${serial}`)
+          ;(async () => {
+            try {
+              await this.root(serial)
+              await this.remount(serial)
+              console.log('[adb] root + remount done, retrying push')
+              this.startTransferWithProgress(id, args, localPath, expectedSize, callbacks, isDirectory, totalCount)
+            } catch (retryErr) {
+              console.error('[adb] root/remount retry failed:', retryErr)
+              callbacks.onError(`文件系统只读，root/remount 后重试仍失败: ${(retryErr as Error).message}`)
+            }
+          })()
+          return
+        }
         callbacks.onError(`进程退出，代码: ${code}`)
       }
     })

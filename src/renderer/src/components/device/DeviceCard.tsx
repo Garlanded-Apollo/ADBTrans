@@ -26,14 +26,14 @@ export function DeviceCard({ onOpenWifiDialog }: DeviceCardProps): JSX.Element {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 px-1">
-        <Smartphone className="h-4 w-4 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground">设备</span>
-        <span className="ml-auto text-xs text-muted-foreground">{devices.length}</span>
+      <div className="flex items-center gap-1.5 px-1">
+        <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-[10px] font-medium text-muted-foreground">设备</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">{devices.length}</span>
         <Button
           variant="ghost"
           size="icon"
-          className="h-5 w-5"
+          className="h-4 w-4"
           onClick={() => refreshDevices()}
           title="刷新设备"
         >
@@ -51,21 +51,21 @@ export function DeviceCard({ onOpenWifiDialog }: DeviceCardProps): JSX.Element {
         <div
           key={d.serial}
           className={cn(
-            'flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors cursor-pointer',
+            'flex w-full items-center gap-2 rounded-xl border px-2 py-2 text-left transition-colors cursor-pointer',
             current?.serial === d.serial ? 'border-primary/40 bg-primary/10' : 'border-transparent hover:bg-muted'
           )}
           onClick={() => setCurrent(d)}
         >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-            <Smartphone className="h-4 w-4" />
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <Smartphone className="h-3.5 w-3.5" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">{d.model || d.serial}</div>
+            <div className="text-xs font-medium truncate">{d.model || d.serial}</div>
             {d.model && (
-              <div className="text-[11px] text-muted-foreground truncate">{d.serial}</div>
+              <div className="text-[10px] text-muted-foreground truncate">{d.serial}</div>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          <div className="flex shrink-0 items-center gap-0 text-[10px] text-muted-foreground">
             {stateIcon(d.state)}
             <span>{stateLabel(d.state)}</span>
           </div>

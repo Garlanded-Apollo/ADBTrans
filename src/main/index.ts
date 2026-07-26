@@ -45,6 +45,38 @@ function getIconPath(): string {
   return pngPath
 }
 
+function getFileTypeIcon(fileName: string): Electron.NativeImage {
+  const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  const iconDir = join(process.resourcesPath, 'file-icons')
+  if (!existsSync(iconDir)) {
+    // Dev mode: icons are in project root resources
+    const devIconDir = join(process.cwd(), 'resources', 'file-icons')
+    if (existsSync(devIconDir)) {
+      return loadFileIcon(devIconDir, ext)
+    }
+    return nativeImage.createEmpty()
+  }
+  return loadFileIcon(iconDir, ext)
+}
+
+function loadFileIcon(iconDir: string, ext: string): Electron.NativeImage {
+  const map: Record<string, string> = {
+    'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'webp': 'image', 'bmp': 'image', 'svg': 'image',
+    'mp4': 'video', 'mkv': 'video', 'avi': 'video', 'mov': 'video', 'webm': 'video',
+    'mp3': 'music', 'wav': 'music', 'flac': 'music', 'aac': 'music', 'ogg': 'music',
+    'json': 'json',
+    'xml': 'code', 'html': 'code', 'css': 'code', 'js': 'code', 'ts': 'code', 'py': 'code', 'java': 'code', 'kt': 'code',
+    'txt': 'text', 'log': 'text', 'md': 'text', 'csv': 'text',
+    'zip': 'archive', 'tar': 'archive', 'gz': 'archive', 'rar': 'archive', '7z': 'archive', 'apk': 'archive'
+  }
+  const iconName = map[ext] || 'generic'
+  const iconPath = join(iconDir, `${iconName}.png`)
+  if (existsSync(iconPath)) {
+    return nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32 })
+  }
+  return nativeImage.createFromPath(join(iconDir, 'generic.png')).resize({ width: 32, height: 32 })
+}
+
 function createWindow(): void {
   const iconPath = getIconPath()
   const appIcon = nativeImage.createFromPath(iconPath)
@@ -86,6 +118,39 @@ function createWindow(): void {
   })
 }
 
+function startDragFiles(tempFiles: string[], fileNames: string[]): void {
+  if (!mainWindow) return
+
+  let icon: Electron.NativeImage
+  if (tempFiles.length === 1) {
+    const ext = fileNames[0].split('.').pop()?.toLowerCase() || ''
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext) && existsSync(tempFiles[0])) {
+      try {
+        const image = nativeImage.createFromPath(tempFiles[0])
+        const size = image.getSize()
+        if (size.width > 0 && size.height > 0) {
+          const maxSize = 64
+          icon = (size.width > maxSize || size.height > maxSize)
+            ? image.resize({ width: Math.round(size.width * (maxSize / Math.max(size.width, size.height))), height: Math.round(size.height * (maxSize / Math.max(size.width, size.height))) })
+            : image
+        } else {
+          icon = getFileTypeIcon(fileNames[0])
+        }
+      } catch {
+        icon = getFileTypeIcon(fileNames[0])
+      }
+    } else {
+      icon = getFileTypeIcon(fileNames[0])
+    }
+    if (!existsSync(tempFiles[0])) return
+    mainWindow.webContents.startDrag({ file: tempFiles[0], icon })
+    return
+  }
+
+  icon = getFileTypeIcon(fileNames[0])
+  mainWindow.webContents.startDrag({ file: tempFiles[0], icon, files: tempFiles })
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle('adb:check', () => adbService.check())
   ipcMain.handle('adb:get-devices', () => adbService.getDevices())
@@ -118,7 +183,22 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('adb:pull', async (_e, id: string, serial: string, remotePath: string, localPath: string) => {
-    const expectedSize = await adbService.getPathSize(serial, remotePath)
+    const { stat } = require('fs').promises
+    let expectedSize = 0
+    let isDirectory = false
+    let totalCount = 0
+
+    try {
+      const st = await stat(localPath)
+      isDirectory = st.isDirectory()
+    } catch { /* not exists yet */ }
+
+    if (isDirectory) {
+      totalCount = await adbService.countRemoteFiles(serial, remotePath)
+    } else {
+      expectedSize = await adbService.getPathSize(serial, remotePath)
+    }
+
     adbService.startTransferWithProgress(id, ['-s', serial, 'pull', remotePath, localPath], localPath, expectedSize, {
       onProgress: (percent, speed) => {
         mainWindow?.webContents.send('adb:transfer-progress', { id, percent, speed })
@@ -129,36 +209,20 @@ function registerIpcHandlers(): void {
       onError: (err) => {
         mainWindow?.webContents.send('adb:transfer-error', { id, error: err })
       }
-    })
+    }, isDirectory, totalCount)
   })
 
   ipcMain.handle('adb:push', async (_e, id: string, serial: string, localPath: string, remotePath: string) => {
     const { stat } = require('fs').promises
     let expectedSize = 0
+    let isDirectory = false
+    let totalCount = 0
+
     try {
       const st = await stat(localPath)
-      if (st.isDirectory()) {
-        const getDirSizeAsync = async (dir: string): Promise<number> => {
-          let size = 0
-          try {
-            const { readdir } = require('fs').promises
-            const { join } = require('path')
-            const entries = await readdir(dir, { withFileTypes: true } as any)
-            for (const entry of entries) {
-              const fullPath = join(dir, entry.name)
-              try {
-                const s = await stat(fullPath)
-                if (entry.isDirectory()) {
-                  size += await getDirSizeAsync(fullPath)
-                } else {
-                  size += s.size
-                }
-              } catch { /* skip */ }
-            }
-          } catch { /* skip */ }
-          return size
-        }
-        expectedSize = await getDirSizeAsync(localPath)
+      isDirectory = st.isDirectory()
+      if (isDirectory) {
+        totalCount = await adbService.countLocalFiles(localPath)
       } else {
         expectedSize = st.size
       }
@@ -174,7 +238,7 @@ function registerIpcHandlers(): void {
       onError: (err) => {
         mainWindow?.webContents.send('adb:transfer-error', { id, error: err })
       }
-    })
+    }, isDirectory, totalCount)
   })
 
   ipcMain.handle('adb:cancel-transfer', (_e, id: string) => {
@@ -263,10 +327,9 @@ function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.on('adb:start-drag', async (_e, serial: string, remotePath: string, fileName: string) => {
+  ipcMain.on('adb:download-for-drag', async (_e, serial: string, remotePath: string, fileName: string) => {
     const tempDir = join(tmpdir(), 'adbtrans-drag')
     const tempFile = join(tempDir, fileName)
-
     try {
       const { mkdirSync } = require('fs')
       mkdirSync(tempDir, { recursive: true })
@@ -280,13 +343,53 @@ function registerIpcHandlers(): void {
       })
 
       if (mainWindow && existsSync(tempFile)) {
-        mainWindow.webContents.startDrag({
-          file: tempFile,
-          icon: nativeImage.createFromPath(tempFile)
-        })
+        let icon: Electron.NativeImage
+        try {
+          const image = nativeImage.createFromPath(tempFile)
+          const size = image.getSize()
+          if (size.width > 0 && size.height > 0) {
+            const maxSize = 64
+            icon = (size.width > maxSize || size.height > maxSize)
+              ? image.resize({ width: Math.round(size.width * (maxSize / Math.max(size.width, size.height))), height: Math.round(size.height * (maxSize / Math.max(size.width, size.height))) })
+              : image
+          } else {
+            icon = getFileTypeIcon(fileName)
+          }
+        } catch {
+          icon = getFileTypeIcon(fileName)
+        }
+        mainWindow.webContents.startDrag({ file: tempFile, icon })
       }
     } catch (err) {
-      console.error('Drag failed:', err)
+      console.error('[drag] failed:', err)
+    }
+  })
+
+  ipcMain.on('adb:drag-download', async (_e, serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string }>) => {
+    const tempDir = join(tmpdir(), 'adbtrans-drag')
+    const { mkdirSync } = require('fs')
+    mkdirSync(tempDir, { recursive: true })
+
+    const tempFiles: string[] = []
+    const completed = new Set<string>()
+
+    for (const file of files) {
+      const tempFile = join(tempDir, file.fileName)
+      tempFiles.push(tempFile)
+
+      adbService.startTransfer(file.taskId, ['-s', serial, 'pull', file.remotePath, tempFile], {
+        onProgress: () => {},
+        onDone: () => {
+          completed.add(file.taskId)
+          mainWindow?.webContents.send('adb:transfer-done', { id: file.taskId })
+          if (completed.size === files.length) {
+            startDragFiles(tempFiles, files.map(f => f.fileName))
+          }
+        },
+        onError: (err) => {
+          mainWindow?.webContents.send('adb:transfer-error', { id: file.taskId, error: err })
+        }
+      })
     }
   })
 }

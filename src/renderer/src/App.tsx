@@ -16,6 +16,7 @@ function App(): JSX.Element {
   const { checkAdb, adbStatus, current } = useDeviceStore()
   const { loadCurrentPath, navigateTo } = useFileStore()
   const [wifiDialogOpen, setWifiDialogOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   useEffect(() => {
     checkAdb()
@@ -40,15 +41,19 @@ function App(): JSX.Element {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar onOpenWifiDialog={() => setWifiDialogOpen(true)} />
         <div className="flex flex-1 flex-col overflow-hidden">
-          <Toolbar />
+          <Toolbar previewOpen={previewOpen} onTogglePreview={() => setPreviewOpen(!previewOpen)} />
           <PanelGroup direction="horizontal" className="flex-1">
-            <Panel defaultSize={65} minSize={40}>
+            <Panel defaultSize={previewOpen ? 65 : 100} minSize={40}>
               <FileTable onOpenFolder={handleOpenFolder} />
             </Panel>
-            <PanelResizeHandle className="w-[3px] bg-border hover:bg-primary transition-colors" />
-            <Panel defaultSize={25} minSize={20}>
-              <PreviewPanel />
-            </Panel>
+            {previewOpen && (
+              <>
+                <PanelResizeHandle className="w-[3px] bg-border hover:bg-primary transition-colors" />
+                <Panel defaultSize={25} minSize={20}>
+                  <PreviewPanel />
+                </Panel>
+              </>
+            )}
           </PanelGroup>
           <TransferQueue />
         </div>

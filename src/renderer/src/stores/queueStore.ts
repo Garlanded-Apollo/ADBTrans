@@ -15,6 +15,7 @@ export interface QueueTask {
   remaining: string
   status: 'pending' | 'running' | 'done' | 'error'
   error?: string
+  source?: 'drag'
 }
 
 interface QueueStore {
@@ -95,6 +96,7 @@ export function initTransferListeners(): void {
 }
 
 export function executeTask(task: QueueTask): void {
+  if (task.source === 'drag') return
   if (task.direction === 'pull') {
     window.api.pullFile(task.id, task.serial, task.fromPath, task.toPath)
   } else {

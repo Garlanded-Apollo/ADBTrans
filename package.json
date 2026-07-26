@@ -1,6 +1,6 @@
 {
   "name": "adbtrans",
-  "version": "1.0.4",
+  "version": "1.0.8",
   "description": "ADB-based file transfer tool between computer and Android phone",
   "main": "./out/main/index.js",
   "scripts": {

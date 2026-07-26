@@ -66,7 +66,7 @@ export function BookmarkDialog({ open, onOpenChange }: BookmarkDialogProps): JSX
         </DialogHeader>
         <div className="mt-4 space-y-3 max-h-[400px] overflow-y-auto">
           {bookmarks.map((bookmark) => (
-            <div key={bookmark.id} className="flex items-center gap-2 rounded-lg border p-3">
+            <div key={bookmark.id} className="flex items-center gap-1 rounded-lg border p-3">
               {editingId === bookmark.id ? (
                 <div className="flex-1 space-y-2">
                   <Input

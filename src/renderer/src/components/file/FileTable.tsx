@@ -85,7 +85,7 @@ interface FileTableProps {
 export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath, pendingScrollTo, setPendingScrollTo } = useFileStore()
   const { current } = useDeviceStore()
-  const { addTask, startAllPending } = useQueueStore()
+  const { addTask, startAllPending, updateTask } = useQueueStore()
   const [widths, setWidths] = useState<number[]>(DEFAULT_WIDTHS)
   const [keyword, setKeyword] = useState('')
   const [showCheckboxes, setShowCheckboxes] = useState(false)
@@ -316,8 +316,9 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     const droppedFiles = Array.from(e.dataTransfer.files)
     for (const file of droppedFiles) {
       const filePath = window.api.getFilePath(file)
-      console.log('[Drop] file:', file.name, 'path:', filePath)
       if (!filePath) continue
+      // Skip files dragged from this app (in temp directory)
+      if (filePath.includes('adbtrans-drag')) continue
       const fileName = file.name
       const remotePath = `${currentPath}/${fileName}`
       addTask({
@@ -354,11 +355,33 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       e.preventDefault()
       return
     }
-    e.dataTransfer.effectAllowed = 'copy'
-    e.dataTransfer.setData(INTERNAL_FILE_DRAG_TYPE, item.path)
-    e.dataTransfer.setData('text/plain', item.name)
-    window.api.startDrag(current.serial, item.path, item.name)
-  }, [current?.serial])
+    e.preventDefault()
+
+    const targetFiles = checkedPaths.size > 0 && checkedPaths.has(item.path)
+      ? files.filter((f) => checkedPaths.has(f.path) && f.type !== 'folder')
+      : [item]
+
+    if (targetFiles.length === 1) {
+      window.api.startDrag(current.serial, targetFiles[0].path, targetFiles[0].name)
+      return
+    }
+
+    const dragFiles: Array<{ remotePath: string; fileName: string; taskId: string }> = []
+    for (const f of targetFiles) {
+      const taskId = addTask({
+        serial: current.serial,
+        fileName: f.name,
+        fromPath: f.path,
+        toPath: f.name,
+        direction: 'pull',
+        source: 'drag'
+      })
+      updateTask(taskId, { status: 'running' })
+      dragFiles.push({ remotePath: f.path, fileName: f.name, taskId })
+    }
+
+    window.api.dragDownload(current.serial, dragFiles)
+  }, [current?.serial, files, checkedPaths, addTask, updateTask])
 
   const handleResizeStart = useCallback((e: React.MouseEvent, index: number) => {
     e.preventDefault()
@@ -485,7 +508,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
           </span>
         )}
       </div>
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-x-hidden overflow-y-auto">
         <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
           <thead className="sticky top-0 z-10 bg-background">
             <tr className="border-b">
@@ -510,10 +533,10 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                   <span className={col.align === 'right' ? 'float-right' : ''}>{col.label}</span>
                   {i < columns.length - 1 && (
                     <div
-                      className="absolute right-0 top-1 bottom-1 w-px cursor-col-resize group"
+                      className="absolute right-0 top-1 bottom-1 w-2 cursor-col-resize group z-10"
                       onMouseDown={(e) => handleResizeStart(e, i)}
                     >
-                      <div className="h-full w-px bg-border group-hover:bg-primary transition-colors" />
+                      <div className="h-full w-px bg-border group-hover:bg-primary transition-colors mx-auto" />
                     </div>
                   )}
                 </th>

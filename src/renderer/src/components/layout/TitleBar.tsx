@@ -145,12 +145,6 @@ export function TitleBar({ onOpenWifiDialog }: TitleBarProps): JSX.Element {
       </div>
 
       <div className="flex items-center gap-1">
-        {current && (
-          <div className="mr-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-            {stateIcon(current.state)}
-            <span>{current.serial}</span>
-          </div>
-        )}
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSettingsOpen(true)}>
           <Settings className="h-3.5 w-3.5" />
         </Button>

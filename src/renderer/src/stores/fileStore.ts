@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { useHistoryStore } from './historyStore'
 
+let historyTimer: ReturnType<typeof setTimeout> | null = null
+
 export interface FileItem {
   name: string
   path: string
@@ -129,7 +131,9 @@ export const useFileStore = create<FileStore>((set, get) => ({
 
   loadCurrentPath: async (serial) => {
     const { currentPath } = get()
+    // 先添加到历史记录（立即）
     useHistoryStore.getState().addHistory(currentPath)
+    if (historyTimer) clearTimeout(historyTimer)
     set({ loading: true, error: null, checkedPaths: new Set() })
     try {
       const entries = await window.api.listFiles(serial, currentPath)
