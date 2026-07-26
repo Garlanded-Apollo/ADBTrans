@@ -29,6 +29,7 @@ interface ElectronAPI {
   listLocalDirectory: (dirPath: string) => Promise<{ name: string; isDirectory: boolean }[]>
   startDrag: (serial: string, remotePath: string, fileName: string) => void
   dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string }>) => void
+  searchFiles: (serial: string, keyword: string, searchPath?: string) => Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>>
   getFilePath: (file: File) => string
   getAutoLaunch: () => Promise<boolean>
   setAutoLaunch: (enabled: boolean) => Promise<void>

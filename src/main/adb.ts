@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'child_process'
 import { EventEmitter } from 'events'
 import { basename, join } from 'path'
-import { existsSync } from 'fs'
+import { chmodSync, existsSync, statSync } from 'fs'
 import { app } from 'electron'
 
 export interface DeviceInfo {
@@ -64,9 +64,23 @@ const COMMON_PATHS = [
   'C:\\Android\\platform-tools\\adb.exe'
 ]
 
+function ensureExecutable(filePath: string): void {
+  if (process.platform === 'win32' || !existsSync(filePath)) return
+  try {
+    const mode = statSync(filePath).mode
+    if ((mode & 0o111) === 0) {
+      chmodSync(filePath, 0o755)
+      console.log('[findAdb] made executable:', filePath)
+    }
+  } catch (err) {
+    console.warn('[findAdb] could not adjust permissions:', err)
+  }
+}
+
 function findAdb(): string {
   const bundled = getBundledAdbPath()
   if (existsSync(bundled)) {
+    ensureExecutable(bundled)
     console.log('[findAdb] using bundled:', bundled)
     return bundled
   }
@@ -90,12 +104,25 @@ function execAdb(args: string[], timeout = 15000): Promise<string> {
     const adbPath = findAdb()
     execFile(adbPath, args, { timeout, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) {
-        reject(new Error(`ADB error: ${err.message}\nstderr: ${stderr}`))
+        const reason = err.killed
+          ? `Command timed out after ${timeout}ms`
+          : err.message
+        const diagnostics = [
+          `ADB error: ${reason}`,
+          err.code !== undefined ? `code: ${err.code}` : '',
+          err.signal ? `signal: ${err.signal}` : '',
+          stderr.trim() ? `stderr: ${stderr.trim()}` : ''
+        ].filter(Boolean)
+        reject(new Error(diagnostics.join('\n')))
         return
       }
       resolve(stdout.trim())
     })
   })
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`
 }
 
 function parseState(raw: string): DeviceInfo['state'] {
@@ -684,6 +711,23 @@ export class AdbService extends EventEmitter {
 
   async delete(serial: string, remotePath: string): Promise<void> {
     await execAdb(['-s', serial, 'shell', `rm -rf "${remotePath}"`])
+  }
+
+  async searchFiles(serial: string, keyword: string, searchPath: string = '/storage/emulated/0'): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> {
+    const command = `find ${shellQuote(searchPath)} -iname ${shellQuote(`*${keyword}*`)} 2>/dev/null | head -200`
+    const output = await execAdb(
+      ['-s', serial, 'shell', command],
+      60000
+    )
+    if (!output) return []
+    return output.split('\n').filter(Boolean).map((fullPath) => {
+      const name = fullPath.split('/').pop() || fullPath
+      return {
+        name,
+        path: fullPath,
+        type: fullPath.endsWith('/') ? 'folder' as const : 'file' as const
+      }
+    })
   }
 }
 

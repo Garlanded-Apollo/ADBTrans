@@ -12,6 +12,12 @@ export interface FileItem {
   permission: string
 }
 
+export interface SearchResult {
+  name: string
+  path: string
+  type: 'file' | 'folder'
+}
+
 interface FileStore {
   currentPath: string
   files: FileItem[]
@@ -22,6 +28,12 @@ interface FileStore {
   loading: boolean
   error: string | null
   pendingScrollTo: string | null
+  globalSearchKeyword: string | null
+  showGlobalSearch: boolean
+  searchResults: SearchResult[]
+  searchLoading: boolean
+  searchSearched: boolean
+  searchError: string | null
   setCurrentPath: (path: string) => void
   setFiles: (files: FileItem[]) => void
   setSelected: (file: FileItem | null) => void
@@ -31,6 +43,8 @@ interface FileStore {
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   setPendingScrollTo: (fileName: string | null) => void
+  setGlobalSearch: (keyword: string | null, show: boolean) => void
+  setSearchResults: (results: SearchResult[], loading: boolean, searched: boolean, error?: string | null) => void
   updateFileInList: (oldPath: string, updates: Partial<FileItem>) => void
   removeFilesFromList: (paths: string[]) => void
   addFileToList: (file: FileItem) => void
@@ -53,6 +67,12 @@ export const useFileStore = create<FileStore>((set, get) => ({
   loading: false,
   error: null,
   pendingScrollTo: null,
+  globalSearchKeyword: null,
+  showGlobalSearch: false,
+  searchResults: [],
+  searchLoading: false,
+  searchSearched: false,
+  searchError: null,
 
   setCurrentPath: (path) => set({ currentPath: path }),
   setFiles: (files) => set({ files }),
@@ -60,6 +80,13 @@ export const useFileStore = create<FileStore>((set, get) => ({
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
   setPendingScrollTo: (fileName) => set({ pendingScrollTo: fileName }),
+  setGlobalSearch: (keyword, show) => set({ globalSearchKeyword: keyword, showGlobalSearch: show }),
+  setSearchResults: (results, loading, searched, error = null) => set({
+    searchResults: results,
+    searchLoading: loading,
+    searchSearched: searched,
+    searchError: error
+  }),
   updateFileInList: (oldPath, updates) => set((s) => ({
     files: s.files.map((f) => f.path === oldPath ? { ...f, ...updates } : f),
     selected: s.selected?.path === oldPath ? { ...s.selected, ...updates } : s.selected
@@ -103,10 +130,20 @@ export const useFileStore = create<FileStore>((set, get) => ({
   },
 
   goBack: () => {
-    const { history, historyIndex } = get()
-    if (historyIndex <= 0) return null
+    const { history, historyIndex, globalSearchKeyword } = get()
+    if (historyIndex <= 0) {
+      // If at the beginning and there's a search keyword, show search results
+      if (globalSearchKeyword) {
+        set({ showGlobalSearch: true })
+      }
+      return null
+    }
     const i = historyIndex - 1
     set({ historyIndex: i, currentPath: history[i] })
+    // If we have a search keyword, re-show search results on back
+    if (globalSearchKeyword) {
+      set({ showGlobalSearch: true })
+    }
     return history[i]
   },
 

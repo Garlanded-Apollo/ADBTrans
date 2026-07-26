@@ -53,6 +53,8 @@ const api = {
   dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string }>): void => {
     ipcRenderer.send('adb:drag-download', serial, files)
   },
+  searchFiles: (serial: string, keyword: string, searchPath?: string): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> =>
+    ipcRenderer.invoke('adb:search', serial, keyword, searchPath),
   getFilePath: (file: File): string => {
     return webUtils.getPathForFile(file)
   },

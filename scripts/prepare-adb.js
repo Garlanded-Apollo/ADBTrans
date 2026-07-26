@@ -34,6 +34,14 @@ if (fs.existsSync(adbTempDir)) {
 const sourceDir = path.join(resourcesDir, 'adb', platform === 'mac' ? 'mac' : 'win')
 copyDirSync(sourceDir, adbTempDir)
 
+if (platform === 'mac') {
+  const adbPath = path.join(adbTempDir, 'adb')
+  if (fs.existsSync(adbPath)) {
+    fs.chmodSync(adbPath, 0o755)
+    console.log(`[prepare-adb] set executable permission on ${adbPath}`)
+  }
+}
+
 console.log(`[prepare-adb] Copied ${platform} adb files to temp directory`)
 
 // 修改 package.json 中的 files 配置

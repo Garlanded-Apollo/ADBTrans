@@ -1,17 +1,25 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import { Folder, File, Image, FileText, FileJson, FileCode, Film, Music, Package, Loader2, AlertCircle, Search, X, Upload } from 'lucide-react'
-import { useFileStore, type FileItem } from '@/stores/fileStore'
+import { Folder, File, Image, FileText, FileJson, FileCode, Film, Music, Package, Loader2, AlertCircle, Search, X, Upload, Globe } from 'lucide-react'
+import { useFileStore, type FileItem, type SearchResult } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useQueueStore, executeTask } from '@/stores/queueStore'
 import { cn, formatBytes, formatDate } from '@/lib/utils'
 import { Thumbnail, isImageFile } from './Thumbnail'
 import { ContextMenu } from './ContextMenu'
+import { SearchResults } from './SearchResults'
 import { InputDialog } from '@/components/ui/input-dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const INITIAL_BATCH = 50
 const LOAD_MORE_BATCH = 30
 const INTERNAL_FILE_DRAG_TYPE = 'application/x-adbtrans-remote-file'
+
+function getSearchErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/timed out|timeout/i.test(message)) return '搜索超时，请修改关键词后重试'
+  if (/offline|device not found|no devices/i.test(message)) return '设备已断开，请重新连接后重试'
+  return '搜索失败，请修改关键词后重试'
+}
 
 function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
   const types = Array.from(dataTransfer.types)
@@ -83,7 +91,7 @@ interface FileTableProps {
 }
 
 export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
-  const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath, pendingScrollTo, setPendingScrollTo } = useFileStore()
+  const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath, pendingScrollTo, setPendingScrollTo, navigateTo, globalSearchKeyword, showGlobalSearch, setGlobalSearch, searchResults, searchLoading, searchSearched, searchError, setSearchResults } = useFileStore()
   const { current } = useDeviceStore()
   const { addTask, startAllPending, updateTask } = useQueueStore()
   const [widths, setWidths] = useState<number[]>(DEFAULT_WIDTHS)
@@ -95,12 +103,14 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [searchContextMenu, setSearchContextMenu] = useState<{ x: number; y: number; item: SearchResult } | null>(null)
   const resizingRef = useRef<{ index: number; startX: number; startWidth: number; nextStartWidth: number } | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressTriggeredRef = useRef(false)
   const lastClickIndexRef = useRef<number | null>(null)
   const loadMoreRef = useRef<HTMLDivElement>(null)
+  const lastSearchedKeywordRef = useRef<string>('')
 
   const filteredFiles = keyword.trim()
     ? files.filter((f) => f.name.toLowerCase().includes(keyword.trim().toLowerCase()))
@@ -118,7 +128,8 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   }, [keyword, files])
 
   useEffect(() => {
-    if (!pendingScrollTo || files.length === 0) return
+    if (!pendingScrollTo) return
+    if (files.length === 0) return
 
     const targetFile = files.find((f) => f.name === pendingScrollTo)
     if (!targetFile) {
@@ -126,26 +137,79 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       return
     }
 
-    const index = filteredFiles.findIndex((f) => f.path === targetFile.path)
-    if (index < 0) {
-      setPendingScrollTo(null)
+    // Load all files into DOM so the target row is rendered
+    setDisplayCount(files.length)
+
+    // Use requestAnimationFrame to wait for DOM update, then scroll
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`[data-path="${targetFile.path}"]`)
+        if (row) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+        setSelected(targetFile)
+        setPendingScrollTo(null)
+      })
+    })
+
+    return () => cancelAnimationFrame(raf)
+  }, [pendingScrollTo, files])
+
+  // Global search effect: debounced search when global search is active
+  useEffect(() => {
+    if (!showGlobalSearch || !current?.serial) {
       return
     }
 
-    const neededCount = Math.max(INITIAL_BATCH, index + 10)
-    setDisplayCount(neededCount)
+    const keywordToSearch = globalSearchKeyword?.trim() || ''
+    if (!keywordToSearch) {
+      lastSearchedKeywordRef.current = ''
+      setSearchResults([], false, false)
+      return
+    }
 
-    const timer = setTimeout(() => {
-      const row = document.querySelector(`[data-path="${targetFile.path}"]`)
-      if (row) {
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // Skip re-search if we already have results for this exact keyword (e.g. going back)
+    if (searchSearched && keywordToSearch === lastSearchedKeywordRef.current) return
+
+    const controller = new AbortController()
+    let timeout: ReturnType<typeof setTimeout>
+
+    setSearchResults([], true, true)
+
+    const doSearch = async () => {
+      try {
+        const res = await window.api.searchFiles(current.serial, keywordToSearch)
+        if (!controller.signal.aborted) {
+          lastSearchedKeywordRef.current = keywordToSearch
+          setSearchResults(res, false, true)
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          lastSearchedKeywordRef.current = keywordToSearch
+          setSearchResults([], false, true, getSearchErrorMessage(err))
+        }
       }
-      setSelected(targetFile)
-      setPendingScrollTo(null)
-    }, 300)
+    }
 
-    return () => clearTimeout(timer)
-  }, [pendingScrollTo, files, filteredFiles])
+    timeout = setTimeout(doSearch, 300)
+
+    return () => {
+      clearTimeout(timeout)
+      controller.abort()
+    }
+  }, [showGlobalSearch, globalSearchKeyword, current?.serial])
+
+  // Search context menu dismiss
+  useEffect(() => {
+    if (!searchContextMenu) return
+    const close = () => setSearchContextMenu(null)
+    document.addEventListener('click', close)
+    document.addEventListener('contextmenu', close)
+    return () => {
+      document.removeEventListener('click', close)
+      document.removeEventListener('contextmenu', close)
+    }
+  }, [searchContextMenu])
 
   useEffect(() => {
     const el = loadMoreRef.current
@@ -478,12 +542,26 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <input
           className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-          placeholder="搜索文件名..."
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
+          placeholder={showGlobalSearch ? '搜索全部用户文件...' : '搜索当前目录...'}
+          value={showGlobalSearch ? globalSearchKeyword || '' : keyword}
+          onChange={(e) => {
+            const nextKeyword = e.target.value
+            setKeyword(nextKeyword)
+            if (showGlobalSearch) {
+              setGlobalSearch(nextKeyword, true)
+            }
+          }}
         />
-        {keyword && (
-          <button className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => setKeyword('')}>
+        {(keyword || showGlobalSearch) && (
+          <button className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => {
+            if (showGlobalSearch) {
+              setGlobalSearch(null, false)
+              setKeyword('')
+              lastSearchedKeywordRef.current = ''
+            } else {
+              setKeyword('')
+            }
+          }}>
             <X className="h-3.5 w-3.5" />
           </button>
         )}
@@ -502,12 +580,83 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
             </button>
           </>
         )}
-        {keyword && (
+        {keyword && !showGlobalSearch && (
           <span className="shrink-0 text-[10px] text-muted-foreground">
             {filteredFiles.length}/{files.length}
           </span>
         )}
+        {(keyword || showGlobalSearch) && (
+          <>
+            <div className="h-3 w-px shrink-0 bg-border" />
+            <button
+              className={cn(
+                'shrink-0 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px]',
+                showGlobalSearch
+                  ? 'bg-primary/15 text-primary font-medium'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              )}
+              title="全盘搜索"
+              onClick={() => {
+                const kw = keyword.trim() || globalSearchKeyword || ''
+                if (kw && current?.serial) {
+                  setKeyword(kw)
+                  setGlobalSearch(kw, true)
+                }
+              }}
+            >
+              <Globe className="h-3 w-3" />
+              <span>全盘</span>
+            </button>
+          </>
+        )}
       </div>
+      {showGlobalSearch && current?.serial ? (
+        <div className="flex-1 overflow-x-hidden overflow-y-auto">
+          <SearchResults
+            results={searchResults}
+            loading={searchLoading}
+            searched={searchSearched}
+            error={searchError}
+            keyword={globalSearchKeyword || ''}
+            onNavigate={(path, fileName) => {
+              setGlobalSearch(globalSearchKeyword, false)
+              setKeyword('')
+              navigateTo(path, current.serial).then(() => {
+                if (fileName) {
+                  useFileStore.getState().setPendingScrollTo(fileName)
+                }
+              })
+            }}
+            onContextMenu={(e, item) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setSearchContextMenu({ x: e.clientX, y: e.clientY, item })
+            }}
+          />
+          {searchContextMenu && (
+            <div
+              className="fixed z-50 min-w-[160px] rounded-lg border bg-background p-1 shadow-lg"
+              style={{ left: searchContextMenu.x, top: searchContextMenu.y }}
+            >
+              <button
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+                onClick={() => {
+                  const parentPath = searchContextMenu.item.path.substring(0, searchContextMenu.item.path.lastIndexOf('/')) || '/'
+                  setGlobalSearch(globalSearchKeyword, false)
+                  if (current?.serial) {
+                    navigateTo(parentPath, current.serial).then(() => {
+                      useFileStore.getState().setPendingScrollTo(searchContextMenu.item.name)
+                    })
+                  }
+                }}
+              >
+                <Folder className="h-3.5 w-3.5" />
+                打开所在目录
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="flex-1 overflow-x-hidden overflow-y-auto">
         <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
           <thead className="sticky top-0 z-10 bg-background">
@@ -610,6 +759,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
           </tbody>
         </table>
       </div>
+      )}
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}

@@ -257,6 +257,10 @@ function registerIpcHandlers(): void {
     return adbService.delete(serial, remotePath)
   })
 
+  ipcMain.handle('adb:search', async (_e, serial: string, keyword: string, searchPath?: string) => {
+    return adbService.searchFiles(serial, keyword, searchPath)
+  })
+
   ipcMain.handle('adb:file-content', async (_e, serial: string, remotePath: string) => {
     return new Promise((resolve, reject) => {
       previewQueue.add(async () => {
