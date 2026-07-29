@@ -2,6 +2,22 @@ interface AdbCheckResult { available: boolean; version: string; path: string }
 interface DeviceInfo { serial: string; state: string; model?: string }
 interface ConnectResult { success: boolean; message: string }
 interface FileEntry { name: string; path: string; size: number; modified: string; type: 'file' | 'folder' | 'symlink'; permission: string }
+interface AppRuntimeInfo {
+  version: string
+  platform: 'mac' | 'win' | 'unsupported'
+  architecture: 'arm64' | 'x64' | 'ia32' | 'unsupported'
+  platformLabel: string
+}
+interface UpdateCheckResult extends AppRuntimeInfo {
+  latestVersion: string | null
+  updateAvailable: boolean
+  assetAvailable: boolean
+  downloadUrl: string | null
+  releaseUrl: string
+  releaseNotes: string
+  publishedAt: string | null
+  noRelease: boolean
+}
 
 interface ElectronAPI {
   checkAdb: () => Promise<AdbCheckResult>
@@ -33,6 +49,9 @@ interface ElectronAPI {
   getFilePath: (file: File) => string
   getAutoLaunch: () => Promise<boolean>
   setAutoLaunch: (enabled: boolean) => Promise<void>
+  getAppInfo: () => Promise<AppRuntimeInfo>
+  checkForUpdates: (force?: boolean) => Promise<UpdateCheckResult>
+  openUpdateUrl: (url: string) => Promise<void>
   focusWindow: () => void
 
   onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void) => void

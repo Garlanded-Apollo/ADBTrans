@@ -3,6 +3,7 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { adbService } from './adb'
 import { thumbnailQueue, previewQueue } from './requestQueue'
+import { checkForUpdates, getAppRuntimeInfo, openUpdateUrl } from './update'
 import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 
@@ -173,6 +174,10 @@ function registerIpcHandlers(): void {
       path: app.getPath('exe')
     })
   })
+
+  ipcMain.handle('app:get-info', () => getAppRuntimeInfo())
+  ipcMain.handle('app:check-for-updates', (_e, force?: boolean) => checkForUpdates(force))
+  ipcMain.handle('app:open-update-url', (_e, url: string) => openUpdateUrl(url))
 
   ipcMain.on('window:focus', () => {
     if (mainWindow) {

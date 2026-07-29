@@ -1,5 +1,23 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+interface AppRuntimeInfo {
+  version: string
+  platform: 'mac' | 'win' | 'unsupported'
+  architecture: 'arm64' | 'x64' | 'ia32' | 'unsupported'
+  platformLabel: string
+}
+
+interface UpdateCheckResult extends AppRuntimeInfo {
+  latestVersion: string | null
+  updateAvailable: boolean
+  assetAvailable: boolean
+  downloadUrl: string | null
+  releaseUrl: string
+  releaseNotes: string
+  publishedAt: string | null
+  noRelease: boolean
+}
+
 const api = {
   checkAdb: (): Promise<{ available: boolean; version: string; path: string }> =>
     ipcRenderer.invoke('adb:check'),
@@ -62,6 +80,12 @@ const api = {
     ipcRenderer.invoke('settings:get-auto-launch'),
   setAutoLaunch: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('settings:set-auto-launch', enabled),
+  getAppInfo: (): Promise<AppRuntimeInfo> =>
+    ipcRenderer.invoke('app:get-info'),
+  checkForUpdates: (force?: boolean): Promise<UpdateCheckResult> =>
+    ipcRenderer.invoke('app:check-for-updates', force),
+  openUpdateUrl: (url: string): Promise<void> =>
+    ipcRenderer.invoke('app:open-update-url', url),
   focusWindow: (): void => {
     ipcRenderer.send('window:focus')
   },

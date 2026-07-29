@@ -2,7 +2,7 @@
 
 基于 ADB 协议的跨平台桌面端文件管理工具，提供手机与电脑之间的双向文件传输和手机文件浏览能力。
 
-当前版本：**v1.0.9**
+当前版本：**v1.1.0**
 
 ## 功能特性
 
@@ -41,6 +41,11 @@
 - **文件信息** — 显示文件名、路径、大小、修改时间、权限等详情
 - **智能布局** — 图片：预览+信息合并显示；文本：预览/信息分 Tab；其他：仅信息
 
+### 应用与更新
+- **版本信息** — 在“设置 → 关于与更新”中查看当前版本与运行平台
+- **更新检测** — 基于 GitHub Releases 检查正式版本，并匹配 macOS/Windows 与 CPU 架构
+- **安全下载** — 新版本可直接打开对应平台安装包或 GitHub Release 页面
+
 ## 技术栈
 
 | 层级 | 技术 |
@@ -75,10 +80,10 @@ npm run typecheck
 ## 打包
 
 ```bash
-# 打包 macOS 版本（仅包含 mac adb，约 116MB）
+# 打包 macOS 版本（Apple Silicon + Intel）
 npm run dist:mac
 
-# 打包 Windows 版本（仅包含 win adb）
+# 打包 Windows x64 版本
 npm run dist:win
 
 # 打包所有平台版本（包含 mac + win adb，约 123MB）
@@ -86,8 +91,11 @@ npm run dist
 ```
 
 打包产物位于 `release/` 目录：
-- macOS: `ADBTrans-{version}-arm64.dmg`
-- Windows: `ADBTrans-{version}-Setup.exe`
+- macOS Apple Silicon: `ADBTrans-{version}-mac-arm64.dmg`
+- macOS Intel: `ADBTrans-{version}-mac-x64.dmg`
+- Windows x64: `ADBTrans-{version}-win-x64.exe`
+
+GitHub 更新检测要求正式 Release 使用 `v{version}` 标签（例如 `v1.0.10`），并将上述各平台安装包上传到同一个 Release。
 
 
 ## 项目结构
@@ -97,7 +105,8 @@ ADBTrans/
 ├── src/
 │   ├── main/                 # Electron 主进程
 │   │   ├── index.ts          # 窗口创建、IPC 注册
-│   │   └── adb.ts            # ADB 命令封装（ls/pull/push/cat 等）
+│   │   ├── adb.ts            # ADB 命令封装（ls/pull/push/cat 等）
+│   │   └── update.ts         # GitHub Release 更新检测与安装包匹配
 │   ├── preload/              # 预加载脚本
 │   │   ├── index.ts          # API 桥接（contextBridge）
 │   │   └── index.d.ts        # 类型声明

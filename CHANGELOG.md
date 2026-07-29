@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.0
+
+### New Features
+- 设置新增“关于与更新”子界面，支持显示当前版本与运行平台
+- 基于 GitHub Releases 检查新版本，并匹配 macOS/Windows 与 CPU 架构的安装包
+
+### Improvements
+- 安装包采用包含平台和架构的统一文件名，并同时构建 macOS arm64/x64 与 Windows x64
+
 ## v1.0.9
 
 ### New Features
