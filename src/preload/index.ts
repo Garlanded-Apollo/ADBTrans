@@ -68,7 +68,7 @@ const api = {
   startDrag: (serial: string, remotePath: string, fileName: string): void => {
     ipcRenderer.send('adb:download-for-drag', serial, remotePath, fileName)
   },
-  dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string }>): void => {
+  dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string; cacheKey: string }>): void => {
     ipcRenderer.send('adb:drag-download', serial, files)
   },
   searchFiles: (serial: string, keyword: string, searchPath?: string): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> =>

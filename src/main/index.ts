@@ -4,12 +4,24 @@ import { is } from '@electron-toolkit/utils'
 import { adbService } from './adb'
 import { thumbnailQueue, previewQueue } from './requestQueue'
 import { checkForUpdates, getAppRuntimeInfo, openUpdateUrl } from './update'
-import { existsSync } from 'fs'
+import { existsSync, mkdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
+import { createHash } from 'crypto'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
+
+interface DragDownloadItem {
+  remotePath: string
+  fileName: string
+  taskId: string
+  cacheKey?: string
+}
+
+const dragCacheRoot = join(tmpdir(), 'adbtrans-drag', String(process.pid))
+const dragDownloads = new Map<string, Promise<string>>()
+const completedDragDownloads = new Map<string, string>()
 
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -122,6 +134,8 @@ function createWindow(): void {
 function startDragFiles(tempFiles: string[], fileNames: string[]): void {
   if (!mainWindow) return
 
+  if (tempFiles.length === 0 || tempFiles.some((file) => !existsSync(file))) return
+
   let icon: Electron.NativeImage
   if (tempFiles.length === 1) {
     const ext = fileNames[0].split('.').pop()?.toLowerCase() || ''
@@ -150,6 +164,51 @@ function startDragFiles(tempFiles: string[], fileNames: string[]): void {
 
   icon = getFileTypeIcon(fileNames[0])
   mainWindow.webContents.startDrag({ file: tempFiles[0], icon, files: tempFiles })
+}
+
+function getDragCacheId(serial: string, file: Pick<DragDownloadItem, 'remotePath' | 'cacheKey'>): string {
+  return createHash('sha256')
+    .update(`${serial}\0${file.remotePath}\0${file.cacheKey || ''}`)
+    .digest('hex')
+}
+
+function prepareDragFile(serial: string, file: DragDownloadItem): Promise<string> {
+  const cacheId = getDragCacheId(serial, file)
+  const cachedPath = completedDragDownloads.get(cacheId)
+  if (cachedPath && existsSync(cachedPath)) return Promise.resolve(cachedPath)
+
+  const activeDownload = dragDownloads.get(cacheId)
+  if (activeDownload) return activeDownload
+
+  const safeName = file.fileName.replace(/[\\/]/g, '_') || 'unnamed'
+  const targetDir = join(dragCacheRoot, cacheId)
+  const targetPath = join(targetDir, safeName)
+  rmSync(targetDir, { recursive: true, force: true })
+  mkdirSync(targetDir, { recursive: true })
+
+  const download = new Promise<string>((resolve, reject) => {
+    adbService.startTransfer(file.taskId, ['-s', serial, 'pull', file.remotePath, targetPath], {
+      onProgress: () => {},
+      onDone: () => {
+        if (!existsSync(targetPath)) {
+          rmSync(targetDir, { recursive: true, force: true })
+          reject(new Error('ADB 已完成，但临时文件不存在'))
+          return
+        }
+        completedDragDownloads.set(cacheId, targetPath)
+        resolve(targetPath)
+      },
+      onError: (err) => {
+        rmSync(targetDir, { recursive: true, force: true })
+        reject(new Error(err))
+      }
+    })
+  }).finally(() => {
+    dragDownloads.delete(cacheId)
+  })
+
+  dragDownloads.set(cacheId, download)
+  return download
 }
 
 function registerIpcHandlers(): void {
@@ -337,68 +396,31 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.on('adb:download-for-drag', async (_e, serial: string, remotePath: string, fileName: string) => {
-    const tempDir = join(tmpdir(), 'adbtrans-drag')
-    const tempFile = join(tempDir, fileName)
     try {
-      const { mkdirSync } = require('fs')
-      mkdirSync(tempDir, { recursive: true })
-
-      await new Promise<void>((resolve, reject) => {
-        adbService.startTransfer('drag-' + Date.now(), ['-s', serial, 'pull', remotePath, tempFile], {
-          onProgress: () => {},
-          onDone: () => resolve(),
-          onError: (err) => reject(new Error(err))
-        })
-      })
-
-      if (mainWindow && existsSync(tempFile)) {
-        let icon: Electron.NativeImage
-        try {
-          const image = nativeImage.createFromPath(tempFile)
-          const size = image.getSize()
-          if (size.width > 0 && size.height > 0) {
-            const maxSize = 64
-            icon = (size.width > maxSize || size.height > maxSize)
-              ? image.resize({ width: Math.round(size.width * (maxSize / Math.max(size.width, size.height))), height: Math.round(size.height * (maxSize / Math.max(size.width, size.height))) })
-              : image
-          } else {
-            icon = getFileTypeIcon(fileName)
-          }
-        } catch {
-          icon = getFileTypeIcon(fileName)
-        }
-        mainWindow.webContents.startDrag({ file: tempFile, icon })
-      }
+      const tempFile = await prepareDragFile(serial, { remotePath, fileName, taskId: `drag-${Date.now()}` })
+      startDragFiles([tempFile], [fileName])
     } catch (err) {
       console.error('[drag] failed:', err)
     }
   })
 
-  ipcMain.on('adb:drag-download', async (_e, serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string }>) => {
-    const tempDir = join(tmpdir(), 'adbtrans-drag')
-    const { mkdirSync } = require('fs')
-    mkdirSync(tempDir, { recursive: true })
+  ipcMain.on('adb:drag-download', async (_e, serial: string, files: DragDownloadItem[]) => {
+    if (files.length === 0) return
 
-    const tempFiles: string[] = []
-    const completed = new Set<string>()
+    const results = await Promise.all(files.map(async (file) => {
+      try {
+        const tempFile = await prepareDragFile(serial, file)
+        mainWindow?.webContents.send('adb:transfer-done', { id: file.taskId })
+        return tempFile
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        mainWindow?.webContents.send('adb:transfer-error', { id: file.taskId, error: message })
+        return null
+      }
+    }))
 
-    for (const file of files) {
-      const tempFile = join(tempDir, file.fileName)
-      tempFiles.push(tempFile)
-
-      adbService.startTransfer(file.taskId, ['-s', serial, 'pull', file.remotePath, tempFile], {
-        onProgress: () => {},
-        onDone: () => {
-          completed.add(file.taskId)
-          mainWindow?.webContents.send('adb:transfer-done', { id: file.taskId })
-          if (completed.size === files.length) {
-            startDragFiles(tempFiles, files.map(f => f.fileName))
-          }
-        },
-        onError: (err) => {
-          mainWindow?.webContents.send('adb:transfer-error', { id: file.taskId, error: err })
-        }
-      })
+    if (results.every((file): file is string => file !== null)) {
+      startDragFiles(results, files.map((file) => file.fileName))
     }
   })
 }

@@ -223,6 +223,10 @@ function parseLsOutput(output: string, parentPath: string): FileEntry[] {
 
 export class AdbService extends EventEmitter {
   private tracker: ReturnType<typeof spawn> | null = null
+  private trackingRequested = false
+  private trackerRestartTimer: ReturnType<typeof setTimeout> | null = null
+  private trackingRefreshRunning = false
+  private trackingRefreshPending = false
   private _devices: DeviceInfo[] = []
   private _adbCheckResult: AdbCheckResult | null = null
   private activeTransfers = new Map<string, ReturnType<typeof spawn>>()
@@ -296,62 +300,23 @@ export class AdbService extends EventEmitter {
   }
 
   startTracking(): void {
+    this.trackingRequested = true
     if (this.tracker) return
+    if (this.trackerRestartTimer) {
+      clearTimeout(this.trackerRestartTimer)
+      this.trackerRestartTimer = null
+    }
     console.log('[track-devices] starting...')
     const adbPath = findAdb()
     this.tracker = spawn(adbPath, ['track-devices'], { stdio: ['ignore', 'pipe', 'pipe'] })
-    let buffer = ''
 
-    const parseTrackOutput = (raw: string): Map<string, DeviceInfo['state']> => {
-      const stateMap = new Map<string, DeviceInfo['state']>()
-      let i = 0
-      while (i < raw.length) {
-        const lenHex = raw.slice(i, i + 4)
-        const len = parseInt(lenHex, 16)
-        if (isNaN(len) || len <= 0) { i++; continue }
-        i += 4
-        const entry = raw.slice(i, i + len)
-        i += len
-        const parts = entry.trim().split('\t')
-        if (parts.length >= 2) {
-          stateMap.set(parts[0], parseState(parts[1]))
-        }
-      }
-      return stateMap
-    }
-
-    this.tracker.stdout?.on('data', async (data: Buffer) => {
+    this.tracker.stdout?.on('data', (data: Buffer) => {
       const text = data.toString()
       console.log('[track-devices] stdout:', JSON.stringify(text))
-      buffer += text
-
-      const stateMap = parseTrackOutput(buffer)
-      buffer = ''
-
-      if (stateMap.size === 0) {
-        this._devices = []
-        this.emit('devices-changed', [])
-        return
-      }
-
-      try {
-        const output = await execAdb(['devices'])
-        const devices = parseDevicesSimple(output)
-        const connected = devices.filter((d) => d.state === 'device')
-        const models = await Promise.all(connected.map((d) => this.getDeviceModel(d.serial)))
-        connected.forEach((d, i) => { d.model = models[i] })
-        this._devices = devices
-        console.log('[track-devices] devices with model:', devices)
-        this.emit('devices-changed', devices)
-      } catch {
-        const devices: DeviceInfo[] = []
-        for (const [serial, state] of stateMap) {
-          const existing = this._devices.find((d) => d.serial === serial)
-          devices.push({ serial, state, model: existing?.model })
-        }
-        this._devices = devices
-        this.emit('devices-changed', devices)
-      }
+      // Chunk boundaries do not necessarily match track-devices protocol frames.
+      // Any stdout data means the list may have changed; query one authoritative
+      // snapshot and coalesce rapid/fragmented events instead of parsing chunks.
+      void this.refreshTrackedDevices()
     })
 
     this.tracker.stderr?.on('data', (data: Buffer) => {
@@ -360,17 +325,49 @@ export class AdbService extends EventEmitter {
 
     this.tracker.on('error', (err) => {
       console.log('[track-devices] error:', err.message)
-      this.stopTracking()
     })
 
-    this.tracker.on('exit', (code) => {
-      console.log('[track-devices] exit code:', code)
+    this.tracker.on('close', (code) => {
+      console.log('[track-devices] close code:', code)
       this.tracker = null
+      this.scheduleTrackerRestart()
     })
   }
 
   stopTracking(): void {
+    this.trackingRequested = false
+    if (this.trackerRestartTimer) {
+      clearTimeout(this.trackerRestartTimer)
+      this.trackerRestartTimer = null
+    }
     if (this.tracker) { this.tracker.kill(); this.tracker = null }
+  }
+
+  private async refreshTrackedDevices(): Promise<void> {
+    this.trackingRefreshPending = true
+    if (this.trackingRefreshRunning) return
+
+    this.trackingRefreshRunning = true
+    try {
+      while (this.trackingRefreshPending) {
+        this.trackingRefreshPending = false
+        try {
+          await this.getDevices()
+        } catch (err) {
+          console.warn('[track-devices] refresh failed:', err)
+        }
+      }
+    } finally {
+      this.trackingRefreshRunning = false
+    }
+  }
+
+  private scheduleTrackerRestart(): void {
+    if (!this.trackingRequested || this.tracker || this.trackerRestartTimer) return
+    this.trackerRestartTimer = setTimeout(() => {
+      this.trackerRestartTimer = null
+      if (this.trackingRequested) this.startTracking()
+    }, 1000)
   }
 
   async listFiles(serial: string, path: string): Promise<FileEntry[]> {

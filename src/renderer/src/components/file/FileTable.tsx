@@ -415,22 +415,13 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
 
   const handleFileDragStart = useCallback((e: React.DragEvent, item: FileItem) => {
     if (!current?.serial) return
-    if (item.type === 'folder') {
-      e.preventDefault()
-      return
-    }
     e.preventDefault()
 
     const targetFiles = checkedPaths.size > 0 && checkedPaths.has(item.path)
-      ? files.filter((f) => checkedPaths.has(f.path) && f.type !== 'folder')
+      ? files.filter((f) => checkedPaths.has(f.path))
       : [item]
 
-    if (targetFiles.length === 1) {
-      window.api.startDrag(current.serial, targetFiles[0].path, targetFiles[0].name)
-      return
-    }
-
-    const dragFiles: Array<{ remotePath: string; fileName: string; taskId: string }> = []
+    const dragFiles: Array<{ remotePath: string; fileName: string; taskId: string; cacheKey: string }> = []
     for (const f of targetFiles) {
       const taskId = addTask({
         serial: current.serial,
@@ -441,7 +432,12 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         source: 'drag'
       })
       updateTask(taskId, { status: 'running' })
-      dragFiles.push({ remotePath: f.path, fileName: f.name, taskId })
+      dragFiles.push({
+        remotePath: f.path,
+        fileName: f.name,
+        taskId,
+        cacheKey: `${f.size}:${f.modified}:${f.type}`
+      })
     }
 
     window.api.dragDownload(current.serial, dragFiles)

@@ -21,8 +21,10 @@ interface DeviceStore {
   disconnectDevice: (serial: string) => Promise<{ success: boolean; message: string }>
 }
 
-function findFirstConnected(devices: Device[]): Device | null {
-  return devices.find((d) => d.state === 'device') || null
+function reconcileCurrent(current: Device | null, devices: Device[]): Device | null {
+  const connected = devices.filter((device) => device.state === 'device')
+  if (!current) return connected[0] || null
+  return connected.find((device) => device.serial === current.serial) || connected[0] || null
 }
 
 export const useDeviceStore = create<DeviceStore>((set, get) => ({
@@ -51,13 +53,7 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
   refreshDevices: async () => {
     try {
       const devices = await window.api.getDevices()
-      set({ devices })
-      const { current } = get()
-      if (current && !devices.find((d) => d.serial === current.serial)) {
-        set({ current: findFirstConnected(devices) })
-      } else if (!current) {
-        set({ current: findFirstConnected(devices) })
-      }
+      set((state) => ({ devices, current: reconcileCurrent(state.current, devices) }))
     } catch { /* silent */ }
   },
 
@@ -69,19 +65,9 @@ export const useDeviceStore = create<DeviceStore>((set, get) => ({
       const prevDevices = get().devices
       const prevConnected = prevDevices.filter((d) => d.state === 'device').map((d) => d.serial)
 
-      set({ devices })
-      const { current } = get()
       const connected = devices.filter((d) => d.state === 'device')
       const newConnected = connected.filter((d) => !prevConnected.includes(d.serial))
-
-      if (current) {
-        const stillConnected = connected.find((d) => d.serial === current.serial)
-        if (!stillConnected) {
-          set({ current: connected[0] || null })
-        }
-      } else if (connected.length > 0) {
-        set({ current: connected[0] })
-      }
+      set((state) => ({ devices, current: reconcileCurrent(state.current, devices) }))
 
       if (newConnected.length > 0) {
         window.api.getAutoLaunch().then((enabled) => {
