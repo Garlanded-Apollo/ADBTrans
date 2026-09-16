@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { FolderPlus, Edit3, Trash2, Download } from 'lucide-react'
+import { FolderPlus, Edit3, Trash2, Download, Eye, FileText, Image, Info, Check, ScanLine } from 'lucide-react'
+import type { PreviewMode } from '@/stores/previewPreferenceStore'
 
 interface ContextMenuProps {
   x: number
@@ -11,9 +12,12 @@ interface ContextMenuProps {
   onDownload: () => void
   hasTarget: boolean
   isMultiSelect?: boolean
+  previewExtension?: string
+  previewMode?: PreviewMode
+  onSetPreviewMode?: (mode: PreviewMode) => void
 }
 
-export function ContextMenu({ x, y, onClose, onNewFolder, onRename, onDelete, onDownload, hasTarget, isMultiSelect }: ContextMenuProps): JSX.Element {
+export function ContextMenu({ x, y, onClose, onNewFolder, onRename, onDelete, onDownload, hasTarget, isMultiSelect, previewExtension, previewMode, onSetPreviewMode }: ContextMenuProps): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -66,6 +70,31 @@ export function ContextMenu({ x, y, onClose, onNewFolder, onRename, onDelete, on
             <Download className="h-3.5 w-3.5" />
             下载到电脑
           </button>
+          {!isMultiSelect && previewExtension && onSetPreviewMode && (
+            <>
+              <div className="my-1 h-px bg-border" />
+              <div className="flex items-center gap-2 px-2.5 py-1 text-[11px] text-muted-foreground">
+                <Eye className="h-3.5 w-3.5" />
+                .{previewExtension} 的默认预览方式
+              </div>
+              {([
+                ['text', '文本', FileText],
+                ['image', '图片', Image],
+                ['nv21', 'NV21 (YUV)', ScanLine],
+                ['info', '仅信息', Info]
+              ] as const).map(([mode, label, Icon]) => (
+                <button
+                  key={mode}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-muted"
+                  onClick={(e) => { e.stopPropagation(); onSetPreviewMode(mode); onClose() }}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="flex-1 text-left">{label}</span>
+                  {previewMode === mode && <Check className="h-3.5 w-3.5 text-primary" />}
+                </button>
+              ))}
+            </>
+          )}
           <div className="my-1 h-px bg-border" />
           <button
             className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10"

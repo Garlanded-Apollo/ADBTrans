@@ -9,6 +9,8 @@ import { ContextMenu } from './ContextMenu'
 import { SearchResults } from './SearchResults'
 import { InputDialog } from '@/components/ui/input-dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { getBuiltInPreviewMode, getFileExtension, usePreviewPreferenceStore, type PreviewMode } from '@/stores/previewPreferenceStore'
+import { matchesAnyKeyword, parseSearchKeywords } from '@/lib/searchKeywords'
 
 const INITIAL_BATCH = 50
 const LOAD_MORE_BATCH = 30
@@ -94,6 +96,8 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath, pendingScrollTo, setPendingScrollTo, navigateTo, globalSearchKeyword, showGlobalSearch, setGlobalSearch, searchResults, searchLoading, searchSearched, searchError, setSearchResults } = useFileStore()
   const { current } = useDeviceStore()
   const { addTask, startAllPending, updateTask } = useQueueStore()
+  const modesByExtension = usePreviewPreferenceStore((state) => state.modesByExtension)
+  const setPreviewMode = usePreviewPreferenceStore((state) => state.setMode)
   const [widths, setWidths] = useState<number[]>(DEFAULT_WIDTHS)
   const [keyword, setKeyword] = useState('')
   const [showCheckboxes, setShowCheckboxes] = useState(false)
@@ -112,8 +116,9 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const lastSearchedKeywordRef = useRef<string>('')
 
-  const filteredFiles = keyword.trim()
-    ? files.filter((f) => f.name.toLowerCase().includes(keyword.trim().toLowerCase()))
+  const localSearchKeywords = useMemo(() => parseSearchKeywords(keyword), [keyword])
+  const filteredFiles = localSearchKeywords.length > 0
+    ? files.filter((file) => matchesAnyKeyword(file.name, localSearchKeywords))
     : files
 
   const displayedFiles = useMemo(() => filteredFiles.slice(0, displayCount), [filteredFiles, displayCount])
@@ -162,7 +167,8 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     }
 
     const keywordToSearch = globalSearchKeyword?.trim() || ''
-    if (!keywordToSearch) {
+    const searchKeywords = parseSearchKeywords(keywordToSearch)
+    if (searchKeywords.length === 0) {
       lastSearchedKeywordRef.current = ''
       setSearchResults([], false, false)
       return
@@ -178,7 +184,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
 
     const doSearch = async () => {
       try {
-        const res = await window.api.searchFiles(current.serial, keywordToSearch)
+        const res = await window.api.searchFiles(current.serial, searchKeywords)
         if (!controller.signal.aborted) {
           lastSearchedKeywordRef.current = keywordToSearch
           setSearchResults(res, false, true)
@@ -291,6 +297,16 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
   }, [])
+
+  const handleItemContextMenu = useCallback((e: React.MouseEvent, item: FileItem) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (checkedPaths.size === 0 || !checkedPaths.has(item.path)) {
+      clearChecks()
+      setSelected(item)
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY })
+  }, [checkedPaths, clearChecks, setSelected])
 
   const handleNewFolder = useCallback(async () => {
     setContextMenu(null)
@@ -538,7 +554,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <input
           className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-          placeholder={showGlobalSearch ? '搜索全部用户文件...' : '搜索当前目录...'}
+          placeholder={showGlobalSearch ? '全盘搜索，多个关键词用 ; 或 ；分隔...' : '搜索当前目录，多个关键词用 ; 或 ；分隔...'}
           value={showGlobalSearch ? globalSearchKeyword || '' : keyword}
           onChange={(e) => {
             const nextKeyword = e.target.value
@@ -709,6 +725,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                   onMouseLeave={handleMouseUp}
                   onClick={(e) => handleClick(e, item, index)}
                   onDoubleClick={() => handleDoubleClick(item)}
+                  onContextMenu={(e) => handleItemContextMenu(e, item)}
                   onDragStart={(e) => handleFileDragStart(e, item)}
                 >
                   {showCheckboxes && (
@@ -767,6 +784,30 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
           onDownload={handleDownload}
           hasTarget={!!selected || checkedPaths.size > 0}
           isMultiSelect={checkedPaths.size > 1}
+          previewExtension={(() => {
+            const target = checkedPaths.size === 1
+              ? files.find((file) => checkedPaths.has(file.path))
+              : checkedPaths.size === 0
+                ? selected
+                : null
+            return target && target.type !== 'folder' ? getFileExtension(target.name) : undefined
+          })()}
+          previewMode={(() => {
+            const target = checkedPaths.size === 1
+              ? files.find((file) => checkedPaths.has(file.path))
+              : checkedPaths.size === 0
+                ? selected
+                : null
+            const extension = target ? getFileExtension(target.name) : ''
+            return target && extension ? (modesByExtension[extension] || getBuiltInPreviewMode(target.name)) : undefined
+          })()}
+          onSetPreviewMode={(mode: PreviewMode) => {
+            const target = checkedPaths.size === 1
+              ? files.find((file) => checkedPaths.has(file.path))
+              : selected
+            const extension = target ? getFileExtension(target.name) : ''
+            if (extension) setPreviewMode(extension, mode)
+          }}
         />
       )}
       <InputDialog

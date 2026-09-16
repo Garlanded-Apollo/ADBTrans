@@ -99,6 +99,10 @@ function findAdb(): string {
   return cmd
 }
 
+export function getAdbExecutablePath(): string {
+  return findAdb()
+}
+
 function execAdb(args: string[], timeout = 15000): Promise<string> {
   return new Promise((resolve, reject) => {
     const adbPath = findAdb()
@@ -710,8 +714,17 @@ export class AdbService extends EventEmitter {
     await execAdb(['-s', serial, 'shell', `rm -rf "${remotePath}"`])
   }
 
-  async searchFiles(serial: string, keyword: string, searchPath: string = '/storage/emulated/0'): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> {
-    const command = `find ${shellQuote(searchPath)} -iname ${shellQuote(`*${keyword}*`)} 2>/dev/null | head -200`
+  async searchFiles(serial: string, keywords: string[], searchPath: string = '/storage/emulated/0'): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> {
+    const normalizedKeywords = keywords
+      .map((keyword) => keyword.trim())
+      .filter(Boolean)
+      .slice(0, 10)
+    if (normalizedKeywords.length === 0) return []
+
+    const conditions = normalizedKeywords
+      .map((keyword) => `-iname ${shellQuote(`*${keyword}*`)}`)
+      .join(' -o ')
+    const command = `find ${shellQuote(searchPath)} \\( ${conditions} \\) 2>/dev/null | head -200`
     const output = await execAdb(
       ['-s', serial, 'shell', command],
       60000

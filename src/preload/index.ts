@@ -18,6 +18,21 @@ interface UpdateCheckResult extends AppRuntimeInfo {
   noRelease: boolean
 }
 
+interface AdbScript {
+  id: string
+  name: string
+  fileName: string
+  platform: 'mac' | 'win'
+  source: 'custom' | 'imported'
+  createdAt: number
+  updatedAt: number
+  lastRunAt?: number
+}
+
+interface ScriptReadResult { script: AdbScript; content: string }
+interface ScriptOutput { runId: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
+interface ScriptFinished { runId: string; code: number | null; signal: string | null }
+
 const api = {
   checkAdb: (): Promise<{ available: boolean; version: string; path: string }> =>
     ipcRenderer.invoke('adb:check'),
@@ -71,8 +86,8 @@ const api = {
   dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string; cacheKey: string }>): void => {
     ipcRenderer.send('adb:drag-download', serial, files)
   },
-  searchFiles: (serial: string, keyword: string, searchPath?: string): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> =>
-    ipcRenderer.invoke('adb:search', serial, keyword, searchPath),
+  searchFiles: (serial: string, keywords: string[], searchPath?: string): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> =>
+    ipcRenderer.invoke('adb:search', serial, keywords, searchPath),
   getFilePath: (file: File): string => {
     return webUtils.getPathForFile(file)
   },
@@ -88,6 +103,25 @@ const api = {
     ipcRenderer.invoke('app:open-update-url', url),
   focusWindow: (): void => {
     ipcRenderer.send('window:focus')
+  },
+
+  listScripts: (): Promise<AdbScript[]> => ipcRenderer.invoke('scripts:list'),
+  readScript: (id: string): Promise<ScriptReadResult> => ipcRenderer.invoke('scripts:read', id),
+  createScript: (name?: string): Promise<ScriptReadResult> => ipcRenderer.invoke('scripts:create', name),
+  importScripts: (): Promise<AdbScript[]> => ipcRenderer.invoke('scripts:import'),
+  updateScript: (id: string, name: string, content: string): Promise<AdbScript> => ipcRenderer.invoke('scripts:update', id, name, content),
+  deleteScript: (id: string): Promise<void> => ipcRenderer.invoke('scripts:delete', id),
+  runScript: (request: { scriptId: string; serial: string; model?: string; args: string[] }): Promise<string> => ipcRenderer.invoke('scripts:run', request),
+  stopScript: (runId: string): Promise<boolean> => ipcRenderer.invoke('scripts:stop', runId),
+  onScriptOutput: (callback: (payload: ScriptOutput) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: ScriptOutput): void => callback(payload)
+    ipcRenderer.on('scripts:output', listener)
+    return () => ipcRenderer.removeListener('scripts:output', listener)
+  },
+  onScriptFinished: (callback: (payload: ScriptFinished) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: ScriptFinished): void => callback(payload)
+    ipcRenderer.on('scripts:finished', listener)
+    return () => ipcRenderer.removeListener('scripts:finished', listener)
   },
 
   onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void): void => {

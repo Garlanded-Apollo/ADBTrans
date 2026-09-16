@@ -12,10 +12,14 @@ interface DialogProps {
 export function Dialog({ open, onOpenChange, children }: DialogProps): JSX.Element | null {
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onOpenChange(false)
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        onOpenChange(false)
+      }
     }
-    if (open) document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
+    if (open) document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
   }, [open, onOpenChange])
 
   if (!open) return null

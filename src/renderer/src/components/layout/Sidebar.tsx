@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef } from 'react'
-import { Clock, FolderOpen, Star, HardDrive, Pencil, Trash2 } from 'lucide-react'
+import { Clock, FolderOpen, Star, HardDrive, Pencil, Trash2, Monitor, Settings, Terminal } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
 import { DeviceCard } from '@/components/device/DeviceCard'
 import { BookmarkDialog } from '@/components/bookmark/BookmarkDialog'
+import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useBookmarkStore } from '@/stores/bookmarkStore'
@@ -18,18 +20,21 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 
 interface SidebarProps {
   onOpenWifiDialog?: () => void
+  activeView: 'files' | 'scripts'
+  onViewChange: (view: 'files' | 'scripts') => void
 }
 
 const MIN_SIDEBAR_WIDTH = 200
 const MAX_SIDEBAR_WIDTH = 400
 const DEFAULT_SIDEBAR_WIDTH = 260
 
-export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
+export function Sidebar({ onOpenWifiDialog, activeView, onViewChange }: SidebarProps): JSX.Element {
   const { currentPath, navigateTo } = useFileStore()
   const { current } = useDeviceStore()
   const { bookmarks } = useBookmarkStore()
   const { history, removeHistory } = useHistoryStore()
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const isResizing = useRef(false)
   const sidebarRef = useRef<HTMLElement>(null)
@@ -63,6 +68,7 @@ export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
   }, [sidebarWidth])
 
   const navigate = (path: string): void => {
+    onViewChange('files')
     if (!current?.serial) return
     navigateTo(path, current.serial)
   }
@@ -139,7 +145,36 @@ export function Sidebar({ onOpenWifiDialog }: SidebarProps): JSX.Element {
           )}
         </ScrollArea>
       </div>
+      <Separator />
+      <div className="flex h-10 shrink-0 items-center justify-between px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Monitor className="h-4 w-4 shrink-0 text-primary" />
+          <span className="truncate text-xs font-semibold">ADBTrans</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn('h-7 w-7 shrink-0', activeView === 'scripts' && 'bg-primary/10 text-primary')}
+            onClick={() => onViewChange(activeView === 'scripts' ? 'files' : 'scripts')}
+            title={activeView === 'scripts' ? '返回文件管理' : 'ADB 脚本'}
+          >
+            {activeView === 'scripts' ? <FolderOpen className="h-3.5 w-3.5" /> : <Terminal className="h-3.5 w-3.5" />}
+          </Button>
+          <div className="h-4 w-px bg-border" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={() => setSettingsOpen(true)}
+            title="设置"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
       <BookmarkDialog open={bookmarkDialogOpen} onOpenChange={setBookmarkDialogOpen} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <div
         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/40 transition-colors"
         onMouseDown={handleResizeStart}

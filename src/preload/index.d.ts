@@ -18,6 +18,19 @@ interface UpdateCheckResult extends AppRuntimeInfo {
   publishedAt: string | null
   noRelease: boolean
 }
+interface AdbScript {
+  id: string
+  name: string
+  fileName: string
+  platform: 'mac' | 'win'
+  source: 'custom' | 'imported'
+  createdAt: number
+  updatedAt: number
+  lastRunAt?: number
+}
+interface ScriptReadResult { script: AdbScript; content: string }
+interface ScriptOutput { runId: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
+interface ScriptFinished { runId: string; code: number | null; signal: string | null }
 
 interface ElectronAPI {
   checkAdb: () => Promise<AdbCheckResult>
@@ -45,7 +58,7 @@ interface ElectronAPI {
   listLocalDirectory: (dirPath: string) => Promise<{ name: string; isDirectory: boolean }[]>
   startDrag: (serial: string, remotePath: string, fileName: string) => void
   dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string; cacheKey: string }>) => void
-  searchFiles: (serial: string, keyword: string, searchPath?: string) => Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>>
+  searchFiles: (serial: string, keywords: string[], searchPath?: string) => Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>>
   getFilePath: (file: File) => string
   getAutoLaunch: () => Promise<boolean>
   setAutoLaunch: (enabled: boolean) => Promise<void>
@@ -53,6 +66,16 @@ interface ElectronAPI {
   checkForUpdates: (force?: boolean) => Promise<UpdateCheckResult>
   openUpdateUrl: (url: string) => Promise<void>
   focusWindow: () => void
+  listScripts: () => Promise<AdbScript[]>
+  readScript: (id: string) => Promise<ScriptReadResult>
+  createScript: (name?: string) => Promise<ScriptReadResult>
+  importScripts: () => Promise<AdbScript[]>
+  updateScript: (id: string, name: string, content: string) => Promise<AdbScript>
+  deleteScript: (id: string) => Promise<void>
+  runScript: (request: { scriptId: string; serial: string; model?: string; args: string[] }) => Promise<string>
+  stopScript: (runId: string) => Promise<boolean>
+  onScriptOutput: (callback: (payload: ScriptOutput) => void) => () => void
+  onScriptFinished: (callback: (payload: ScriptFinished) => void) => () => void
 
   onTransferProgress: (callback: (data: { id: string; percent: number; speed: string }) => void) => void
   onTransferDone: (callback: (data: { id: string }) => void) => void

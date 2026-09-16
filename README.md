@@ -2,7 +2,7 @@
 
 基于 ADB 协议的跨平台桌面端文件管理工具，提供手机与电脑之间的双向文件传输和手机文件浏览能力。
 
-当前版本：**v1.1.0**
+当前版本：**v1.2.0**
 
 ## 功能特性
 
@@ -37,9 +37,20 @@
 ### 文件预览
 - **图片预览** — 支持 jpg/png/gif/webp/bmp，选中即预览
 - **图片缩略图** — 文件列表中图片显示 32x32 缩略图
-- **文本预览** — 支持 txt/log/md/json/xml/html/css/js/ts/py 等文本文件
+- **文本预览** — 支持 txt/log/md/json/xml/html/css/js/ts/py 等文本文件；未知后缀可选择并记住默认预览方式
+- **原始图像预览** — 支持 NV21 (YUV) 文件，可按后缀记住宽高设置
 - **文件信息** — 显示文件名、路径、大小、修改时间、权限等详情
 - **智能布局** — 图片：预览+信息合并显示；文本：预览/信息分 Tab；其他：仅信息
+
+### 文件搜索
+- **多关键词搜索** — 当前目录与全盘搜索均支持使用英文 `;` 或中文 `；` 分隔关键词，匹配任一关键词即可纳入结果
+
+### ADB 脚本
+- **脚本工作区** — 支持新建、编辑、导入、删除和运行 ADB 主机脚本
+- **平台限制** — Windows 支持 bat/cmd，macOS 支持 sh/command，不兼容脚本禁止运行
+- **设备环境** — 自动提供当前设备序列号、型号和内置 ADB 路径环境变量
+- **实时输出** — 显示 stdout、stderr、退出码，支持主动停止和超时终止
+- **运行保护** — 导入脚本首次运行前需要确认
 
 ### 应用与更新
 - **版本信息** — 在“设置 → 关于与更新”中查看当前版本与运行平台
@@ -106,6 +117,7 @@ ADBTrans/
 │   ├── main/                 # Electron 主进程
 │   │   ├── index.ts          # 窗口创建、IPC 注册
 │   │   ├── adb.ts            # ADB 命令封装（ls/pull/push/cat 等）
+│   │   ├── scriptService.ts  # 脚本存储、导入与执行
 │   │   └── update.ts         # GitHub Release 更新检测与安装包匹配
 │   ├── preload/              # 预加载脚本
 │   │   ├── index.ts          # API 桥接（contextBridge）
@@ -123,8 +135,7 @@ ADBTrans/
 │           │   └── bookmarkStore.ts  # 快捷路径收藏
 │           └── components/
 │               ├── layout/          # 布局组件
-│               │   ├── TitleBar.tsx        # 顶栏（设备选择）
-│               │   ├── Sidebar.tsx         # 侧边栏（快捷路径、收藏管理）
+│               │   ├── Sidebar.tsx         # 侧边栏（设备、快捷路径、设置入口）
 │               │   └── Toolbar.tsx         # 工具栏（导航、上传/下载、收藏）
 │               ├── device/          # 设备相关
 │               │   ├── DeviceCard.tsx      # 设备卡片
@@ -136,6 +147,8 @@ ADBTrans/
 │               │   └── Thumbnail.tsx       # 图片缩略图组件
 │               ├── preview/         # 文件预览
 │               │   └── PreviewPanel.tsx    # 预览面板（图片/文本/信息）
+│               ├── scripts/         # ADB 脚本工作区
+│               │   └── ScriptWorkspace.tsx # 编辑、运行与实时输出
 │               ├── queue/           # 传输队列
 │               │   └── TransferQueue.tsx   # 队列面板（进度、状态、操作）
 │               ├── bookmark/        # 书签管理

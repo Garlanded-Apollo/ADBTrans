@@ -4,6 +4,7 @@ import { is } from '@electron-toolkit/utils'
 import { adbService } from './adb'
 import { thumbnailQueue, previewQueue } from './requestQueue'
 import { checkForUpdates, getAppRuntimeInfo, openUpdateUrl } from './update'
+import { scriptService, type ScriptRunRequest } from './scriptService'
 import { existsSync, mkdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -238,6 +239,18 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:check-for-updates', (_e, force?: boolean) => checkForUpdates(force))
   ipcMain.handle('app:open-update-url', (_e, url: string) => openUpdateUrl(url))
 
+  ipcMain.handle('scripts:list', () => scriptService.list())
+  ipcMain.handle('scripts:read', (_e, id: string) => scriptService.read(id))
+  ipcMain.handle('scripts:create', (_e, name?: string) => scriptService.create(name))
+  ipcMain.handle('scripts:import', async () => {
+    if (!mainWindow) return []
+    return scriptService.importFromDialog(mainWindow)
+  })
+  ipcMain.handle('scripts:update', (_e, id: string, name: string, content: string) => scriptService.update(id, name, content))
+  ipcMain.handle('scripts:delete', (_e, id: string) => scriptService.delete(id))
+  ipcMain.handle('scripts:run', (_e, request: ScriptRunRequest) => scriptService.run(request))
+  ipcMain.handle('scripts:stop', (_e, runId: string) => scriptService.stop(runId))
+
   ipcMain.on('window:focus', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
@@ -321,8 +334,8 @@ function registerIpcHandlers(): void {
     return adbService.delete(serial, remotePath)
   })
 
-  ipcMain.handle('adb:search', async (_e, serial: string, keyword: string, searchPath?: string) => {
-    return adbService.searchFiles(serial, keyword, searchPath)
+  ipcMain.handle('adb:search', async (_e, serial: string, keywords: string[], searchPath?: string) => {
+    return adbService.searchFiles(serial, keywords, searchPath)
   })
 
   ipcMain.handle('adb:file-content', async (_e, serial: string, remotePath: string) => {
@@ -431,6 +444,8 @@ app.whenReady().then(() => {
     app.dock.setIcon(nativeImage.createFromPath(iconPath))
   }
   registerIpcHandlers()
+  scriptService.on('output', (payload) => mainWindow?.webContents.send('scripts:output', payload))
+  scriptService.on('finished', (payload) => mainWindow?.webContents.send('scripts:finished', payload))
   createWindow()
 
   const iconPath = getIconPath()
@@ -461,6 +476,7 @@ app.whenReady().then(() => {
 
   app.on('before-quit', () => {
     isQuitting = true
+    scriptService.stopAll()
   })
 
   app.on('activate', () => {

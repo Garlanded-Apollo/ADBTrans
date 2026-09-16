@@ -19,6 +19,19 @@ interface UpdateCheckResult extends AppRuntimeInfo {
   publishedAt: string | null
   noRelease: boolean
 }
+interface AdbScript {
+  id: string
+  name: string
+  fileName: string
+  platform: 'mac' | 'win'
+  source: 'custom' | 'imported'
+  createdAt: number
+  updatedAt: number
+  lastRunAt?: number
+}
+interface ScriptReadResult { script: AdbScript; content: string }
+interface ScriptOutput { runId: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
+interface ScriptFinished { runId: string; code: number | null; signal: string | null }
 
 interface ElectronAPI {
   checkAdb: () => Promise<AdbCheckResult>
@@ -31,6 +44,17 @@ interface ElectronAPI {
   getAppInfo: () => Promise<AppRuntimeInfo>
   checkForUpdates: (force?: boolean) => Promise<UpdateCheckResult>
   openUpdateUrl: (url: string) => Promise<void>
+  searchFiles: (serial: string, keywords: string[], searchPath?: string) => Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>>
+  listScripts: () => Promise<AdbScript[]>
+  readScript: (id: string) => Promise<ScriptReadResult>
+  createScript: (name?: string) => Promise<ScriptReadResult>
+  importScripts: () => Promise<AdbScript[]>
+  updateScript: (id: string, name: string, content: string) => Promise<AdbScript>
+  deleteScript: (id: string) => Promise<void>
+  runScript: (request: { scriptId: string; serial: string; model?: string; args: string[] }) => Promise<string>
+  stopScript: (runId: string) => Promise<boolean>
+  onScriptOutput: (callback: (payload: ScriptOutput) => void) => () => void
+  onScriptFinished: (callback: (payload: ScriptFinished) => void) => () => void
 }
 
 interface Window { api: ElectronAPI }
