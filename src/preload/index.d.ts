@@ -50,6 +50,8 @@ interface ElectronAPI {
   mkdir: (serial: string, remotePath: string) => Promise<void>
   rename: (serial: string, oldPath: string, newPath: string) => Promise<void>
   deletePath: (serial: string, remotePath: string) => Promise<void>
+  deletePaths: (serial: string, remotePaths: string[]) => Promise<string[]>
+  onDeleteProgress: (callback: (data: { done: number; total: number; name: string }) => void) => void
   getFileContent: (serial: string, remotePath: string) => Promise<string>
   getFileBase64: (serial: string, remotePath: string) => Promise<string>
   selectDirectory: () => Promise<string | null>

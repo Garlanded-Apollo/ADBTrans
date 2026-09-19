@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Trash2, ChevronUp, ChevronDown, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -45,12 +45,38 @@ function TaskRow({ task }: { task: QueueTask }): JSX.Element {
   )
 }
 
+function DeleteRow(): JSX.Element {
+  const deleteState = useQueueStore((state) => state.deleteState)
+  if (!deleteState) return <></>
+  const percent = Math.min(100, Math.round((deleteState.done / Math.max(1, deleteState.total)) * 100))
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-primary/30 px-3 py-2">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+          <span className="truncate text-xs font-medium">正在删除 {deleteState.fileName}</span>
+          <span className="shrink-0 rounded bg-red-100 px-1 py-0.5 text-[10px] font-medium text-red-700">删除</span>
+        </div>
+        <div className="mt-1 flex items-center gap-3">
+          <Progress value={percent} className="h-1.5 flex-1" />
+          <span className="shrink-0 text-[10px] text-muted-foreground">{deleteState.done}/{deleteState.total}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function TransferQueue(): JSX.Element {
-  const { tasks, clearDone } = useQueueStore()
+  const { tasks, clearDone, deleteState } = useQueueStore()
   const [expanded, setExpanded] = useState(true)
   const activeCount = tasks.filter((t) => t.status === 'running' || t.status === 'pending').length
   const doneCount = tasks.filter((t) => t.status === 'done').length
   const errorCount = tasks.filter((t) => t.status === 'error').length
+
+  useEffect(() => {
+    if (deleteState) setExpanded(true)
+  }, [deleteState])
 
   return (
     <div className="border-t">
@@ -58,6 +84,7 @@ export function TransferQueue(): JSX.Element {
         <div className="flex items-center gap-2 text-xs">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
           <span className="font-medium">传输队列</span>
+          {deleteState && <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">删除中</span>}
           {activeCount > 0 && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{activeCount} 进行中</span>}
           {doneCount > 0 && <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">{doneCount} 已完成</span>}
           {errorCount > 0 && <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">{errorCount} 失败</span>}
@@ -68,14 +95,13 @@ export function TransferQueue(): JSX.Element {
           </Button>
         )}
       </div>
-      {expanded && tasks.length > 0 && (
-        <div className="max-h-[160px] overflow-y-auto">
-          <div className="space-y-1.5 px-3 pb-2">
-            {[...tasks].reverse().map((task) => <TaskRow key={task.id} task={task} />)}
-          </div>
+      {expanded && (deleteState || tasks.length > 0) && (
+        <div className={cn('space-y-1.5 px-3 pb-2', tasks.length > 0 && 'max-h-[160px] overflow-y-auto')}>
+          {deleteState && <DeleteRow />}
+          {[...tasks].reverse().map((task) => <TaskRow key={task.id} task={task} />)}
         </div>
       )}
-      {expanded && tasks.length === 0 && <div className="px-3 pb-2 text-center text-xs text-muted-foreground">暂无传输任务</div>}
+      {expanded && tasks.length === 0 && !deleteState && <div className="px-3 pb-2 text-center text-xs text-muted-foreground">暂无传输任务</div>}
     </div>
   )
 }

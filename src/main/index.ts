@@ -334,6 +334,15 @@ function registerIpcHandlers(): void {
     return adbService.delete(serial, remotePath)
   })
 
+  ipcMain.handle('adb:delete-paths', async (_e, serial: string, remotePaths: string[]) => {
+    const sender = _e.sender
+    return adbService.deletePaths(serial, remotePaths, (done, total, currentName) => {
+      if (!sender.isDestroyed()) {
+        sender.send('adb:delete-progress', { done, total, name: currentName })
+      }
+    })
+  })
+
   ipcMain.handle('adb:search', async (_e, serial: string, keywords: string[], searchPath?: string) => {
     return adbService.searchFiles(serial, keywords, searchPath)
   })

@@ -68,6 +68,11 @@ const api = {
     ipcRenderer.invoke('adb:rename', serial, oldPath, newPath),
   deletePath: (serial: string, remotePath: string): Promise<void> =>
     ipcRenderer.invoke('adb:delete', serial, remotePath),
+  deletePaths: (serial: string, remotePaths: string[]): Promise<string[]> =>
+    ipcRenderer.invoke('adb:delete-paths', serial, remotePaths),
+  onDeleteProgress: (callback: (data: { done: number; total: number; name: string }) => void): void => {
+    ipcRenderer.on('adb:delete-progress', (_event, data) => callback(data))
+  },
   getFileContent: (serial: string, remotePath: string): Promise<string> =>
     ipcRenderer.invoke('adb:file-content', serial, remotePath),
   getFileBase64: (serial: string, remotePath: string): Promise<string> =>

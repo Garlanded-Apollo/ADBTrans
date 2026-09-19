@@ -714,6 +714,55 @@ export class AdbService extends EventEmitter {
     await execAdb(['-s', serial, 'shell', `rm -rf "${remotePath}"`])
   }
 
+  /**
+   * Delete many paths with as few adb invocations as possible.
+   * Commands are chunked by count and length because some devices still use a
+   * 4 KB adb payload, and a truncated command could delete a wrong partial path.
+   * Chunks run concurrently to avoid paying one adb spawn latency each.
+   */
+  async deletePaths(
+    serial: string,
+    remotePaths: string[],
+    onProgress?: (done: number, total: number, currentName: string) => void
+  ): Promise<string[]> {
+    const cleanPaths = remotePaths.map((p) => p.trim()).filter(Boolean)
+    if (cleanPaths.length === 0) return []
+
+    const chunks: string[][] = []
+    let current: string[] = []
+    let currentLength = 'rm -rf '.length
+    for (const path of cleanPaths) {
+      const quoted = shellQuote(path)
+      if (current.length > 0 && (current.length >= 40 || currentLength + quoted.length > 3500)) {
+        chunks.push(current)
+        current = []
+        currentLength = 'rm -rf '.length
+      }
+      current.push(path)
+      currentLength += quoted.length + 1
+    }
+    if (current.length > 0) chunks.push(current)
+
+    const failed: string[] = []
+    const total = cleanPaths.length
+    let done = 0
+    let nextIndex = 0
+    const workers = Array.from({ length: Math.min(3, chunks.length) }, async () => {
+      while (nextIndex < chunks.length) {
+        const chunk = chunks[nextIndex++]
+        try {
+          await execAdb(['-s', serial, 'shell', `rm -rf ${chunk.map(shellQuote).join(' ')}`], 30000)
+        } catch {
+          failed.push(...chunk)
+        }
+        done += chunk.length
+        onProgress?.(done, total, chunk[chunk.length - 1].split('/').pop() || chunk[chunk.length - 1])
+      }
+    })
+    await Promise.all(workers)
+    return failed
+  }
+
   async searchFiles(serial: string, keywords: string[], searchPath: string = '/'): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> {
     const normalizedKeywords = keywords
       .map((keyword) => keyword.trim())

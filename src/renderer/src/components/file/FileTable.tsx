@@ -352,14 +352,22 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         ? [selected]
         : []
 
-    for (const f of targetFiles) {
-      try {
-        await window.api.deletePath(current.serial, f.path)
-      } catch (err) {
-        console.error('Delete failed:', err)
-      }
+    if (targetFiles.length === 0) return
+
+    const queue = useQueueStore.getState()
+    queue.startDeletion(targetFiles.length)
+
+    let failed: string[] = []
+    try {
+      failed = await window.api.deletePaths(current.serial, targetFiles.map((f) => f.path))
+    } catch (err) {
+      console.error('Delete failed:', err)
+      failed = targetFiles.map((f) => f.path)
+    } finally {
+      queue.finishDeletion()
     }
-    useFileStore.getState().removeFilesFromList(targetFiles.map((f) => f.path))
+    const failedSet = new Set(failed)
+    useFileStore.getState().removeFilesFromList(targetFiles.map((f) => f.path).filter((p) => !failedSet.has(p)))
   }, [current?.serial, selected, checkedPaths, files])
 
   const handleDownload = useCallback(async () => {

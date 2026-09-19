@@ -18,14 +18,24 @@ export interface QueueTask {
   source?: 'drag'
 }
 
+export interface DeleteState {
+  done: number
+  total: number
+  fileName: string
+}
+
 interface QueueStore {
   tasks: QueueTask[]
+  deleteState: DeleteState | null
   addTask: (task: Omit<QueueTask, 'id' | 'progress' | 'speed' | 'remaining' | 'status'>) => string
   updateTask: (id: string, updates: Partial<QueueTask>) => void
   removeTask: (id: string) => void
   clearDone: () => void
   startNextPending: () => QueueTask | null
   startAllPending: () => QueueTask[]
+  startDeletion: (total: number) => void
+  updateDeletionProgress: (done: number, total: number, fileName: string) => void
+  finishDeletion: () => void
 }
 
 let nextId = 1
@@ -34,6 +44,7 @@ let pendingScrollFile: string | null = null
 
 export const useQueueStore = create<QueueStore>((set, get) => ({
   tasks: [],
+  deleteState: null,
   addTask: (task) => {
     const id = String(nextId++)
     set((s) => ({ tasks: [...s.tasks, { ...task, id, progress: 0, speed: '--', remaining: '--', status: 'pending' }] }))
@@ -67,10 +78,17 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       set((s) => ({ tasks: s.tasks.map((t) => (pendingIds.has(t.id) ? { ...t, status: 'running' as const } : t)) }))
     }
     return pending
-  }
+  },
+  startDeletion: (total) => set({ deleteState: { done: 0, total, fileName: '准备删除...' } }),
+  updateDeletionProgress: (done, total, fileName) => set({ deleteState: { done, total, fileName } }),
+  finishDeletion: () => set({ deleteState: null })
 }))
 
 export function initTransferListeners(): void {
+  window.api.onDeleteProgress(({ done, total, name }) => {
+    useQueueStore.getState().updateDeletionProgress(done, total, name)
+  })
+
   window.api.onTransferProgress(({ id, percent, speed }) => {
     useQueueStore.getState().updateTask(id, { progress: percent, speed })
   })
