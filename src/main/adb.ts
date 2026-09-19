@@ -714,7 +714,7 @@ export class AdbService extends EventEmitter {
     await execAdb(['-s', serial, 'shell', `rm -rf "${remotePath}"`])
   }
 
-  async searchFiles(serial: string, keywords: string[], searchPath: string = '/storage/emulated/0'): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> {
+  async searchFiles(serial: string, keywords: string[], searchPath: string = '/'): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> {
     const normalizedKeywords = keywords
       .map((keyword) => keyword.trim())
       .filter(Boolean)
@@ -724,18 +724,37 @@ export class AdbService extends EventEmitter {
     const conditions = normalizedKeywords
       .map((keyword) => `-iname ${shellQuote(`*${keyword}*`)}`)
       .join(' -o ')
-    const command = `find ${shellQuote(searchPath)} \\( ${conditions} \\) 2>/dev/null | head -200`
+    // Pseudo filesystems under /proc, /sys, /dev are huge, unreadable and never
+    // contain user files, so prune them to keep the root-level scan usable
+    const prune = ['/proc', '/sys', '/dev'].map((p) => `-path ${shellQuote(p)}`).join(' -o ')
+    const command = `find ${shellQuote(searchPath)} \\( ${prune} \\) -prune -o \\( ${conditions} \\) -print 2>/dev/null | head -500`
     const output = await execAdb(
       ['-s', serial, 'shell', command],
-      60000
+      120000
     )
     if (!output) return []
-    return output.split('\n').filter(Boolean).map((fullPath) => {
-      const name = fullPath.split('/').pop() || fullPath
+    const paths = output.split('\n').filter(Boolean)
+    if (paths.length === 0) return []
+
+    // find output carries no type info; classify each hit with one shell pass
+    const typeScript = paths
+      .map((p) => `if [ -d ${shellQuote(p)} ]; then echo "d|${p}"; else echo "f|${p}"; fi`)
+      .join('; ')
+    let types: string[] = []
+    try {
+      const typeOutput = await execAdb(['-s', serial, 'shell', typeScript], 30000)
+      types = typeOutput.split('\n').filter(Boolean)
+    } catch {
+      types = []
+    }
+
+    return paths.map((fullPath, i) => {
+      const typeLine = types[i] || ''
+      const isDir = typeLine.startsWith('d|') ? typeLine.slice(2) === fullPath : false
       return {
-        name,
+        name: fullPath.split('/').pop() || fullPath,
         path: fullPath,
-        type: fullPath.endsWith('/') ? 'folder' as const : 'file' as const
+        type: isDir ? 'folder' as const : 'file' as const
       }
     })
   }

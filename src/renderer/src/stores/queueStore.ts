@@ -29,6 +29,8 @@ interface QueueStore {
 }
 
 let nextId = 1
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+let pendingScrollFile: string | null = null
 
 export const useQueueStore = create<QueueStore>((set, get) => ({
   tasks: [],
@@ -78,10 +80,26 @@ export function initTransferListeners(): void {
     useQueueStore.getState().updateTask(id, { status: 'done', progress: 100, speed: '--' })
 
     if (task?.direction === 'push') {
+      const parentPath = task.toPath.substring(0, task.toPath.lastIndexOf('/'))
       const fileStore = useFileStore.getState()
-      fileStore.loadCurrentPath(task.serial).then(() => {
-        useFileStore.getState().setPendingScrollTo(task.fileName)
-      })
+      // Only refresh when the uploaded directory is still being viewed
+      if (parentPath === fileStore.currentPath) {
+        pendingScrollFile = task.fileName
+        if (refreshTimer) clearTimeout(refreshTimer)
+        // Batch consecutive completions into a single directory reload
+        refreshTimer = setTimeout(() => {
+          refreshTimer = null
+          const serial = task.serial
+          const fileName = pendingScrollFile
+          pendingScrollFile = null
+          // Reload only if the user is still viewing the same directory
+          if (useFileStore.getState().currentPath === parentPath) {
+            useFileStore.getState().loadCurrentPath(serial).then(() => {
+              useFileStore.getState().setPendingScrollTo(fileName)
+            })
+          }
+        }, 300)
+      }
     }
 
     const pending = useQueueStore.getState().startAllPending()

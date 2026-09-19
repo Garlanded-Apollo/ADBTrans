@@ -10,6 +10,7 @@ import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useBookmarkStore } from '@/stores/bookmarkStore'
 import { useHistoryStore } from '@/stores/historyStore'
+import { useUpdateStore } from '@/stores/updateStore'
 import { cn } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -35,6 +36,8 @@ export function Sidebar({ onOpenWifiDialog, activeView, onViewChange }: SidebarP
   const { history, removeHistory } = useHistoryStore()
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsPage, setSettingsPage] = useState<'main' | 'about'>('main')
+  const updateAvailable = useUpdateStore((state) => state.updateAvailable)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const isResizing = useRef(false)
   const sidebarRef = useRef<HTMLElement>(null)
@@ -148,7 +151,19 @@ export function Sidebar({ onOpenWifiDialog, activeView, onViewChange }: SidebarP
       <Separator />
       <div className="flex h-10 shrink-0 items-center justify-between px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Monitor className="h-4 w-4 shrink-0 text-primary" />
+          <button
+            className="relative flex items-center rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onClick={() => { setSettingsPage('about'); setSettingsOpen(true) }}
+            title={updateAvailable ? '发现新版本，点击查看' : '关于与更新'}
+          >
+            <Monitor className="h-4 w-4 shrink-0 text-primary" />
+            {updateAvailable && (
+              <span className="absolute -right-1 -top-1 flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
+              </span>
+            )}
+          </button>
           <span className="truncate text-xs font-semibold">ADBTrans</span>
         </div>
         <div className="flex items-center gap-1">
@@ -174,7 +189,7 @@ export function Sidebar({ onOpenWifiDialog, activeView, onViewChange }: SidebarP
         </div>
       </div>
       <BookmarkDialog open={bookmarkDialogOpen} onOpenChange={setBookmarkDialogOpen} />
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} initialPage={settingsPage} />
       <div
         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/40 transition-colors"
         onMouseDown={handleResizeStart}

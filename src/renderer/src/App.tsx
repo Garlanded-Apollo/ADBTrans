@@ -11,6 +11,7 @@ import { ScriptWorkspace } from '@/components/scripts/ScriptWorkspace'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useFileStore } from '@/stores/fileStore'
 import { initTransferListeners } from '@/stores/queueStore'
+import { useUpdateStore } from '@/stores/updateStore'
 
 function App(): JSX.Element {
   const { checkAdb, adbStatus, current } = useDeviceStore()
@@ -22,6 +23,7 @@ function App(): JSX.Element {
   useEffect(() => {
     checkAdb()
     initTransferListeners()
+    useUpdateStore.getState().autoCheck()
   }, [])
 
   useEffect(() => {

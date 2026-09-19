@@ -142,15 +142,22 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       return
     }
 
-    // Load all files into DOM so the target row is rendered
-    setDisplayCount(files.length)
+    const targetIndex = files.findIndex((f) => f.name === pendingScrollTo)
+    if (targetIndex < 0) {
+      setPendingScrollTo(null)
+      return
+    }
+
+    // Only render rows up to the target (plus one viewport) instead of the whole list
+    setDisplayCount(Math.min(files.length, targetIndex + 1 + INITIAL_BATCH))
 
     // Use requestAnimationFrame to wait for DOM update, then scroll
     const raf = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const row = document.querySelector(`[data-path="${targetFile.path}"]`)
         if (row) {
-          row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          // Instant scroll: smooth scrolling across thousands of rows appears frozen
+          row.scrollIntoView({ behavior: 'auto', block: 'center' })
         }
         setSelected(targetFile)
         setPendingScrollTo(null)

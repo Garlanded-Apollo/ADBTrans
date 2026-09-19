@@ -12,10 +12,12 @@ import {
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { useUpdateStore } from '@/stores/updateStore'
 
 interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialPage?: 'main' | 'about'
 }
 
 type SettingsPage = 'main' | 'about'
@@ -35,7 +37,7 @@ function formatPublishedDate(value: string | null): string | null {
   return date.toLocaleDateString('zh-CN')
 }
 
-export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): JSX.Element {
+export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: SettingsDialogProps): JSX.Element {
   const [page, setPage] = useState<SettingsPage>('main')
   const [autoLaunch, setAutoLaunch] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -48,6 +50,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): JSX
     if (!open) {
       setPage('main')
       return
+    }
+
+    if (initialPage === 'about') {
+      setPage('about')
+      void handleCheckForUpdates(false)
     }
 
     setLoading(true)
@@ -76,6 +83,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): JSX
       const result = await window.api.checkForUpdates(force)
       setUpdateInfo(result)
       setAppInfo(result)
+      // Keep the sidebar red-dot indicator in sync with manual checks
+      useUpdateStore.getState().refreshStatus()
     } catch (error) {
       setUpdateError(getUpdateErrorMessage(error))
     } finally {

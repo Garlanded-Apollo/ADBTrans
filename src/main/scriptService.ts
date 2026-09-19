@@ -215,7 +215,10 @@ export class ScriptService extends EventEmitter {
 
     if (platform === 'win') {
       const command = [scriptPath, ...request.args].map(quoteWindowsArgument).join(' ')
-      child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], {
+      // Chinese Windows cmd defaults to GBK (cp936); switch to UTF-8 so the
+      // decoded output below matches what the script actually prints
+      const fullCommand = `@chcp 65001 >nul & ${command}`
+      child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', fullCommand], {
         cwd: this.rootDir,
         env,
         windowsHide: true
