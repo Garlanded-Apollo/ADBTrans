@@ -20,6 +20,12 @@ export function formatDate(dateStr: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${d.getHours()}:${pad(d.getMinutes())}`
 }
 
+export function getBaseName(path: string): string {
+  // Windows 本机路径用反斜杠分隔，先统一成正斜杠再取最后一段
+  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
+  return parts.pop() || path
+}
+
 export function normalizePath(path: string): string {
   // 先处理斜杠问题
   let normalized = path

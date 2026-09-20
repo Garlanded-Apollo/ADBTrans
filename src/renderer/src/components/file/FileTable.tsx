@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import { Folder, File, Image, FileText, FileJson, FileCode, Film, Music, Package, Loader2, AlertCircle, Search, X, Upload, Globe } from 'lucide-react'
+import { Folder, File, Image, FileText, FileJson, FileCode, Film, Music, Package, Loader2, AlertCircle, Search, X, Upload, Globe, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react'
 import { useFileStore, type FileItem, type SearchResult } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useQueueStore, executeTask } from '@/stores/queueStore'
@@ -48,8 +48,32 @@ const DEFAULT_WIDTHS = [42, 15, 25, 15]
 const MIN_WIDTH = 5
 const LONG_PRESS_MS = 400
 
+type SortKey = 'name' | 'size' | 'modified' | 'type'
+type SortDir = 'asc' | 'desc'
+
+const nameCollator = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+
+function getExtension(name: string): string {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : ''
+}
+
+function compareBySortKey(a: FileItem, b: FileItem, key: SortKey): number {
+  switch (key) {
+    case 'name':
+      return nameCollator.compare(a.name, b.name)
+    case 'size':
+      return a.size - b.size
+    case 'modified':
+      // modified 已归一化为 YYYY-MM-DDTHH:mm:ss，定宽 ISO 格式可直接按字符串比较
+      return a.modified.localeCompare(b.modified)
+    case 'type':
+      return nameCollator.compare(getExtension(a.name), getExtension(b.name))
+  }
+}
+
 interface ColumnDef {
-  key: string
+  key: SortKey
   label: string
   align?: 'left' | 'right'
   render: (item: FileItem) => React.ReactNode
@@ -121,8 +145,29 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     ? files.filter((file) => matchesAnyKeyword(file.name, localSearchKeywords))
     : files
 
-  const displayedFiles = useMemo(() => filteredFiles.slice(0, displayCount), [filteredFiles, displayCount])
-  const hasMore = displayCount < filteredFiles.length
+  const [sortKey, setSortKey] = useState<SortKey>('name')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  const handleSortClick = useCallback((key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }, [sortKey])
+
+  const sortedFiles = useMemo(() => {
+    return [...filteredFiles].sort((a, b) => {
+      // 文件夹始终排在文件前面，排序方向只影响组内顺序
+      if ((a.type === 'folder') !== (b.type === 'folder')) return a.type === 'folder' ? -1 : 1
+      const result = compareBySortKey(a, b, sortKey) || nameCollator.compare(a.name, b.name)
+      return sortDir === 'desc' ? -result : result
+    })
+  }, [filteredFiles, sortKey, sortDir])
+
+  const displayedFiles = useMemo(() => sortedFiles.slice(0, displayCount), [sortedFiles, displayCount])
+  const hasMore = displayCount < sortedFiles.length
 
   const filteredPaths = useMemo(() => filteredFiles.map((f) => f.path), [filteredFiles])
   const allChecked = filteredPaths.length > 0 && filteredPaths.every((p) => checkedPaths.has(p))
@@ -275,7 +320,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       if (e.shiftKey && lastClickIndexRef.current !== null) {
         const from = Math.min(lastClickIndexRef.current, index)
         const to = Math.max(lastClickIndexRef.current, index)
-        const pathsToCheck = filteredFiles.slice(from, to + 1).map((f) => f.path)
+        const pathsToCheck = sortedFiles.slice(from, to + 1).map((f) => f.path)
         const store = useFileStore.getState()
         const allInRangeChecked = pathsToCheck.every((p) => store.checkedPaths.has(p))
         if (allInRangeChecked) {
@@ -291,7 +336,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     }
 
     lastClickIndexRef.current = index
-  }, [showCheckboxes, filteredFiles, enableCheckboxes, toggleCheck, setSelected, handleMouseUp])
+  }, [showCheckboxes, sortedFiles, enableCheckboxes, toggleCheck, setSelected, handleMouseUp])
 
   const handleDoubleClick = useCallback((item: FileItem) => {
     handleMouseUp()
@@ -706,7 +751,26 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                   className="relative h-9 px-3 text-left align-middle font-medium text-muted-foreground"
                   style={{ width: showCheckboxes ? `${widths[i]}%` : (i === 0 ? `${widths[i] + CHECKBOX_WIDTH}%` : `${widths[i]}%`) }}
                 >
-                  <span className={col.align === 'right' ? 'float-right' : ''}>{col.label}</span>
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex w-full items-center gap-1 rounded focus:outline-none',
+                      col.align === 'right' ? 'justify-end' : 'justify-start',
+                      sortKey === col.key && 'text-foreground'
+                    )}
+                    onClick={() => handleSortClick(col.key)}
+                  >
+                    <span className="truncate">{col.label}</span>
+                    {sortKey === col.key ? (
+                      sortDir === 'asc' ? (
+                        <ArrowUp className="h-3 w-3 shrink-0 text-primary" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3 shrink-0 text-primary" />
+                      )
+                    ) : (
+                      <ChevronsUpDown className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+                    )}
+                  </button>
                   {i < columns.length - 1 && (
                     <div
                       className="absolute right-0 top-1 bottom-1 w-2 cursor-col-resize group z-10"

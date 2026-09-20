@@ -9,6 +9,7 @@ import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useQueueStore, executeTask } from '@/stores/queueStore'
 import { useBookmarkStore } from '@/stores/bookmarkStore'
+import { getBaseName } from '@/lib/utils'
 import { useEffect } from 'react'
 
 interface ToolbarProps {
@@ -83,7 +84,7 @@ export function Toolbar({ previewOpen = false, onTogglePreview }: ToolbarProps):
     const files = await window.api.selectFiles()
     if (!files) return
     for (const localPath of files) {
-      const fileName = localPath.split('/').pop() || localPath
+      const fileName = getBaseName(localPath)
       const remotePath = `${currentPath}/${fileName}`
       addTask({
         serial: current.serial,
@@ -103,7 +104,7 @@ export function Toolbar({ previewOpen = false, onTogglePreview }: ToolbarProps):
     if (!folderPath) return
 
     const entries = await window.api.listLocalDirectory(folderPath)
-    const folderName = folderPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() || folderPath
+    const folderName = getBaseName(folderPath)
     const remotePath = `${currentPath}/${folderName}`
 
     if (entries.length === 0) {

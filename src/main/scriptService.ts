@@ -216,9 +216,13 @@ export class ScriptService extends EventEmitter {
     if (platform === 'win') {
       const command = [scriptPath, ...request.args].map(quoteWindowsArgument).join(' ')
       // Chinese Windows cmd defaults to GBK (cp936); switch to UTF-8 so the
-      // decoded output below matches what the script actually prints
-      const fullCommand = `@chcp 65001 >nul & ${command}`
-      child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', fullCommand], {
+      // decoded output below matches what the script actually prints.
+      // Use the string form + shell:true so Node itself builds the
+      // `cmd /d /s /c "<command>"` line with windowsVerbatimArguments; passing
+      // the line as a single spawn argument makes libuv escape the inner
+      // quotes to \" and cmd then treats \"C:\...bat\" as the command name
+      child = spawn(`@chcp 65001 >nul & ${command}`, {
+        shell: true,
         cwd: this.rootDir,
         env,
         windowsHide: true
