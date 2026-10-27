@@ -32,6 +32,7 @@ interface AdbScript {
 interface ScriptReadResult { script: AdbScript; content: string }
 interface ScriptOutput { runId: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
 interface ScriptFinished { runId: string; code: number | null; signal: string | null }
+interface LogInfo { path: string; dir: string; size: number; maxSize: number }
 
 const api = {
   checkAdb: (): Promise<{ available: boolean; version: string; path: string }> =>
@@ -106,6 +107,12 @@ const api = {
     ipcRenderer.invoke('app:check-for-updates', force),
   openUpdateUrl: (url: string): Promise<void> =>
     ipcRenderer.invoke('app:open-update-url', url),
+  getLogInfo: (): Promise<LogInfo> =>
+    ipcRenderer.invoke('logs:get-info'),
+  openLogDirectory: (): Promise<void> =>
+    ipcRenderer.invoke('logs:open'),
+  clearLogs: (): Promise<void> =>
+    ipcRenderer.invoke('logs:clear'),
   focusWindow: (): void => {
     ipcRenderer.send('window:focus')
   },

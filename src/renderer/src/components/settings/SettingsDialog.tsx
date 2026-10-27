@@ -6,12 +6,14 @@ import {
   ChevronRight,
   Download,
   ExternalLink,
+  FileText,
   Info,
   Loader2,
   RefreshCw
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useUpdateStore } from '@/stores/updateStore'
 
 interface SettingsDialogProps {
@@ -37,6 +39,12 @@ function formatPublishedDate(value: string | null): string | null {
   return date.toLocaleDateString('zh-CN')
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: SettingsDialogProps): JSX.Element {
   const [page, setPage] = useState<SettingsPage>('main')
   const [autoLaunch, setAutoLaunch] = useState(false)
@@ -45,10 +53,13 @@ export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: Set
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null)
   const [updateLoading, setUpdateLoading] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [logInfo, setLogInfo] = useState<LogInfo | null>(null)
+  const [logClearOpen, setLogClearOpen] = useState(false)
 
   useEffect(() => {
     if (!open) {
       setPage('main')
+      setLogClearOpen(false)
       return
     }
 
@@ -58,10 +69,11 @@ export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: Set
     }
 
     setLoading(true)
-    Promise.all([window.api.getAutoLaunch(), window.api.getAppInfo()])
-      .then(([enabled, info]) => {
+    Promise.all([window.api.getAutoLaunch(), window.api.getAppInfo(), window.api.getLogInfo()])
+      .then(([enabled, info, logs]) => {
         setAutoLaunch(enabled)
         setAppInfo(info)
+        setLogInfo(logs)
       })
       .catch(() => {
         setAppInfo(null)
@@ -95,6 +107,24 @@ export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: Set
   const handleOpenAbout = (): void => {
     setPage('about')
     void handleCheckForUpdates(false)
+  }
+
+  const handleOpenLogDirectory = async (): Promise<void> => {
+    try {
+      await window.api.openLogDirectory()
+    } catch {
+      /* 打开失败不打扰用户 */
+    }
+  }
+
+  const handleClearLogs = async (): Promise<void> => {
+    setLogClearOpen(false)
+    try {
+      await window.api.clearLogs()
+      setLogInfo(await window.api.getLogInfo())
+    } catch {
+      /* 清空失败时下次打开会重新读取真实大小 */
+    }
   }
 
   const handleOpenUrl = async (url: string): Promise<void> => {
@@ -150,6 +180,26 @@ export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: Set
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
               </button>
+
+              <div className="flex items-center gap-3 pt-4">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">运行日志</div>
+                  <div className="truncate text-xs text-muted-foreground" title={logInfo?.path || undefined}>
+                    {logInfo
+                      ? `占用 ${formatBytes(logInfo.size)}，单文件上限 ${formatBytes(logInfo.maxSize)}`
+                      : '读取中...'}
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => void handleOpenLogDirectory()}>
+                    打开目录
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setLogClearOpen(true)}>
+                    清空
+                  </Button>
+                </div>
+              </div>
             </div>
           </>
         ) : (
@@ -281,6 +331,16 @@ export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: Set
           <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
         </DialogFooter>
       </DialogContent>
+
+      <ConfirmDialog
+        open={logClearOpen}
+        title="清空运行日志"
+        message={'确定要清空运行日志吗？\n\n当前日志及其备份文件将被删除，此操作不可恢复。'}
+        confirmLabel="清空"
+        destructive
+        onConfirm={() => void handleClearLogs()}
+        onCancel={() => setLogClearOpen(false)}
+      />
     </Dialog>
   )
 }

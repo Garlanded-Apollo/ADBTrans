@@ -31,6 +31,7 @@ interface AdbScript {
 interface ScriptReadResult { script: AdbScript; content: string }
 interface ScriptOutput { runId: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
 interface ScriptFinished { runId: string; code: number | null; signal: string | null }
+interface LogInfo { path: string; dir: string; size: number; maxSize: number }
 
 interface ElectronAPI {
   checkAdb: () => Promise<AdbCheckResult>
@@ -67,6 +68,9 @@ interface ElectronAPI {
   getAppInfo: () => Promise<AppRuntimeInfo>
   checkForUpdates: (force?: boolean) => Promise<UpdateCheckResult>
   openUpdateUrl: (url: string) => Promise<void>
+  getLogInfo: () => Promise<LogInfo>
+  openLogDirectory: () => Promise<void>
+  clearLogs: () => Promise<void>
   focusWindow: () => void
   listScripts: () => Promise<AdbScript[]>
   readScript: (id: string) => Promise<ScriptReadResult>

@@ -439,6 +439,9 @@ export class AdbService extends EventEmitter {
     let checking = false
     let stderrData = ''
     let retriedReadOnly = false
+    let spawnFailed = false
+
+    console.log(`[transfer] ${args[2]} 开始: ${args[3]} -> ${args[4]}`)
 
     const getDirSizeAsync = async (dir: string): Promise<number> => {
       let size = 0
@@ -519,9 +522,16 @@ export class AdbService extends EventEmitter {
     })
 
     proc.on('close', (code) => {
+      // spawn 失败时 'error' 已经回调过，避免重复上报
+      if (spawnFailed) return
       clearInterval(checkProgress)
       this.activeTransfers.delete(id)
+      const source = args[3] || ''
+      const target = args[4] || ''
+      const stderrLines = stderrData.split('\n').map((line) => line.trim()).filter(Boolean)
+
       if (code === 0) {
+        console.log(`[transfer] ${args[2]} 完成: ${source} -> ${target}`)
         callbacks.onProgress(100, '--')
         callbacks.onDone()
       } else if (code !== null) {
@@ -542,13 +552,25 @@ export class AdbService extends EventEmitter {
           })()
           return
         }
-        callbacks.onError(`进程退出，代码: ${code}`)
+        // adb 几乎所有错误都返回退出码 1，真实原因在 stderr，完整记录进日志
+        console.error(
+          `[transfer] ${args[2]} 失败（退出码 ${code}）: ${source} -> ${target}\n${stderrData.trim() || '(无 stderr 输出)'}`
+        )
+        const detail = stderrLines.length > 0 ? `: ${stderrLines[0]}` : ''
+        const extraLines = stderrLines.length > 1 ? `\n${stderrLines.slice(-3).join('\n')}` : ''
+        callbacks.onError(`进程退出，代码: ${code}${detail}${extraLines}`)
+      } else {
+        // 被 kill（用户取消或外部终止），code 为 null
+        console.warn(`[transfer] ${args[2]} 进程被终止（可能已取消）: ${source} -> ${target}`)
+        callbacks.onError('传输已取消或进程被终止')
       }
     })
 
     proc.on('error', (err) => {
+      spawnFailed = true
       clearInterval(checkProgress)
       this.activeTransfers.delete(id)
+      console.error(`[transfer] ${args[2]} 启动失败: ${args[3]} -> ${args[4]}`, err)
       callbacks.onError(err.message)
     })
   }
@@ -570,6 +592,10 @@ export class AdbService extends EventEmitter {
 
     let lastPercent = 0
     const startTime = Date.now()
+    let stderrData = ''
+    let spawnFailed = false
+
+    console.log(`[transfer] ${args[2]} 开始: ${args[3]} -> ${args[4]}`)
 
     const processOutput = (data: Buffer): void => {
       const text = data.toString()
@@ -585,20 +611,39 @@ export class AdbService extends EventEmitter {
     }
 
     proc.stdout?.on('data', processOutput)
-    proc.stderr?.on('data', processOutput)
+    proc.stderr?.on('data', (data: Buffer) => {
+      stderrData += data.toString()
+      processOutput(data)
+    })
 
     proc.on('close', (code) => {
+      // spawn 失败时 'error' 已经回调过，避免重复上报
+      if (spawnFailed) return
       this.activeTransfers.delete(id)
+      const source = args[3] || ''
+      const target = args[4] || ''
       if (code === 0) {
+        console.log(`[transfer] ${args[2]} 完成: ${source} -> ${target}`)
         callbacks.onProgress(100, '--')
         callbacks.onDone()
       } else if (code !== null) {
-        callbacks.onError(`进程退出，代码: ${code}`)
+        const stderrLines = stderrData.split('\n').map((line) => line.trim()).filter(Boolean)
+        console.error(
+          `[transfer] ${args[2]} 失败（退出码 ${code}）: ${source} -> ${target}\n${stderrData.trim() || '(无 stderr 输出)'}`
+        )
+        const detail = stderrLines.length > 0 ? `: ${stderrLines[0]}` : ''
+        const extraLines = stderrLines.length > 1 ? `\n${stderrLines.slice(-3).join('\n')}` : ''
+        callbacks.onError(`进程退出，代码: ${code}${detail}${extraLines}`)
+      } else {
+        console.warn(`[transfer] ${args[2]} 进程被终止（可能已取消）: ${source} -> ${target}`)
+        callbacks.onError('传输已取消或进程被终止')
       }
     })
 
     proc.on('error', (err) => {
+      spawnFailed = true
       this.activeTransfers.delete(id)
+      console.error(`[transfer] ${args[2]} 启动失败: ${args[3]} -> ${args[4]}`, err)
       callbacks.onError(err.message)
     })
   }

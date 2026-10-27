@@ -5,6 +5,7 @@ import { adbService } from './adb'
 import { thumbnailQueue, previewQueue } from './requestQueue'
 import { checkForUpdates, getAppRuntimeInfo, openUpdateUrl } from './update'
 import { scriptService, type ScriptRunRequest } from './scriptService'
+import { getLogInfo, clearLogs, openLogDirectory } from './logger'
 import { existsSync, mkdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -213,10 +214,22 @@ function prepareDragFile(serial: string, file: DragDownloadItem): Promise<string
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle('adb:check', () => adbService.check())
+  ipcMain.handle('adb:check', async () => {
+    const result = await adbService.check()
+    console.log(`[adb] 环境检测: available=${result.available} version=${result.version || '-'} path=${result.path || '-'}`)
+    return result
+  })
   ipcMain.handle('adb:get-devices', () => adbService.getDevices())
-  ipcMain.handle('adb:connect', (_e, host: string) => adbService.connect(host))
-  ipcMain.handle('adb:disconnect', (_e, serial: string) => adbService.disconnect(serial))
+  ipcMain.handle('adb:connect', async (_e, host: string) => {
+    const result = await adbService.connect(host)
+    console.log(`[adb] 无线连接 ${host}: ${result.success ? '成功' : '失败'} - ${result.message.trim()}`)
+    return result
+  })
+  ipcMain.handle('adb:disconnect', async (_e, serial: string) => {
+    const result = await adbService.disconnect(serial)
+    console.log(`[adb] 断开 ${serial}: ${result.message.trim()}`)
+    return result
+  })
   ipcMain.handle('adb:start-tracking', () => adbService.startTracking())
   ipcMain.handle('adb:stop-tracking', () => adbService.stopTracking())
   ipcMain.handle('adb:ls', (_e, serial: string, path: string) => adbService.listFiles(serial, path))
@@ -238,6 +251,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:get-info', () => getAppRuntimeInfo())
   ipcMain.handle('app:check-for-updates', (_e, force?: boolean) => checkForUpdates(force))
   ipcMain.handle('app:open-update-url', (_e, url: string) => openUpdateUrl(url))
+
+  ipcMain.handle('logs:get-info', () => getLogInfo())
+  ipcMain.handle('logs:open', () => openLogDirectory())
+  ipcMain.handle('logs:clear', () => clearLogs())
 
   ipcMain.handle('scripts:list', () => scriptService.list())
   ipcMain.handle('scripts:read', (_e, id: string) => scriptService.read(id))
@@ -448,6 +465,9 @@ function registerIpcHandlers(): void {
 }
 
 app.whenReady().then(() => {
+  console.log(
+    `===== ADBTrans v${app.getVersion()} 启动 | ${process.platform} ${process.arch} | Electron ${process.versions.electron} | Node ${process.versions.node} =====`
+  )
   if (process.platform === 'darwin' && app.dock) {
     const iconPath = getIconPath()
     app.dock.setIcon(nativeImage.createFromPath(iconPath))
@@ -484,6 +504,7 @@ app.whenReady().then(() => {
   tray.setContextMenu(contextMenu)
 
   app.on('before-quit', () => {
+    console.log('[app] before-quit，正在退出')
     isQuitting = true
     scriptService.stopAll()
   })

@@ -237,16 +237,19 @@ export class ScriptService extends EventEmitter {
 
     this.activeRuns.set(runId, child)
     this.emit('output', { runId, stream: 'system', text: `运行脚本：${script.name}\n设备：${request.serial}\n\n` })
+    console.log(`[script] 开始运行: ${script.name} (runId=${runId}, device=${request.serial})`)
     child.stdout?.on('data', (data: Buffer) => this.emit('output', { runId, stream: 'stdout', text: data.toString() }))
     child.stderr?.on('data', (data: Buffer) => this.emit('output', { runId, stream: 'stderr', text: data.toString() }))
 
     const timeout = setTimeout(() => {
       this.stop(runId)
       this.emit('output', { runId, stream: 'stderr', text: '\n脚本运行超过 10 分钟，已停止。\n' })
+      console.warn(`[script] 运行超过 10 分钟已停止: ${script.name} (runId=${runId})`)
     }, 10 * 60 * 1000)
 
     child.on('error', (error) => {
       this.emit('output', { runId, stream: 'stderr', text: `${error.message}\n` })
+      console.error(`[script] 运行出错: ${script.name} (runId=${runId})`, error)
     })
     child.on('close', (code, signal) => {
       clearTimeout(timeout)
@@ -257,6 +260,7 @@ export class ScriptService extends EventEmitter {
         index.scripts[position] = { ...index.scripts[position], lastRunAt: Date.now() }
         this.writeIndex(index)
       }
+      console.log(`[script] 结束: ${script.name} (runId=${runId}, code=${code}, signal=${signal})`)
       this.emit('finished', { runId, code, signal })
     })
     return runId

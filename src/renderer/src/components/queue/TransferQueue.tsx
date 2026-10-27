@@ -33,7 +33,7 @@ function TaskRow({ task }: { task: QueueTask }): JSX.Element {
           </div>
         )}
         {isError && task.error && (
-          <div className="mt-0.5 text-[10px] text-destructive truncate">{task.error}</div>
+          <div className="mt-0.5 text-[10px] text-destructive truncate" title={task.error}>{task.error}</div>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
