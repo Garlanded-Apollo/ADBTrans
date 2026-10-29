@@ -2,8 +2,14 @@ import { useState, useEffect } from 'react'
 import { X, Trash2, ChevronUp, ChevronDown, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { useQueueStore, type QueueTask } from '@/stores/queueStore'
+import { useQueueStore, type QueueTask, type OperationKind } from '@/stores/queueStore'
 import { cn } from '@/lib/utils'
+
+const OPERATION_INFO: Record<OperationKind, { action: string; badge: string; badgeClass: string }> = {
+  delete: { action: '正在删除', badge: '删除', badgeClass: 'bg-red-100 text-red-700' },
+  copy: { action: '正在复制到目标目录', badge: '复制', badgeClass: 'bg-blue-100 text-blue-700' },
+  move: { action: '正在移动到目标目录', badge: '移动', badgeClass: 'bg-orange-100 text-orange-700' }
+}
 
 function TaskRow({ task }: { task: QueueTask }): JSX.Element {
   const { removeTask } = useQueueStore()
@@ -45,22 +51,23 @@ function TaskRow({ task }: { task: QueueTask }): JSX.Element {
   )
 }
 
-function DeleteRow(): JSX.Element {
-  const deleteState = useQueueStore((state) => state.deleteState)
-  if (!deleteState) return <></>
-  const percent = Math.min(100, Math.round((deleteState.done / Math.max(1, deleteState.total)) * 100))
+function OperationRow(): JSX.Element {
+  const operationState = useQueueStore((state) => state.operationState)
+  if (!operationState) return <></>
+  const percent = Math.min(100, Math.round((operationState.done / Math.max(1, operationState.total)) * 100))
+  const info = OPERATION_INFO[operationState.operation]
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-primary/30 px-3 py-2">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
-          <span className="truncate text-xs font-medium">正在删除 {deleteState.fileName}</span>
-          <span className="shrink-0 rounded bg-red-100 px-1 py-0.5 text-[10px] font-medium text-red-700">删除</span>
+          <span className="truncate text-xs font-medium">{info.action} {operationState.fileName}</span>
+          <span className={cn('shrink-0 rounded px-1 py-0.5 text-[10px] font-medium', info.badgeClass)}>{info.badge}</span>
         </div>
         <div className="mt-1 flex items-center gap-3">
           <Progress value={percent} className="h-1.5 flex-1" />
-          <span className="shrink-0 text-[10px] text-muted-foreground">{deleteState.done}/{deleteState.total}</span>
+          <span className="shrink-0 text-[10px] text-muted-foreground">{operationState.done}/{operationState.total}</span>
         </div>
       </div>
     </div>
@@ -68,15 +75,15 @@ function DeleteRow(): JSX.Element {
 }
 
 export function TransferQueue(): JSX.Element {
-  const { tasks, clearDone, deleteState } = useQueueStore()
+  const { tasks, clearDone, operationState } = useQueueStore()
   const [expanded, setExpanded] = useState(true)
   const activeCount = tasks.filter((t) => t.status === 'running' || t.status === 'pending').length
   const doneCount = tasks.filter((t) => t.status === 'done').length
   const errorCount = tasks.filter((t) => t.status === 'error').length
 
   useEffect(() => {
-    if (deleteState) setExpanded(true)
-  }, [deleteState])
+    if (operationState) setExpanded(true)
+  }, [operationState])
 
   return (
     <div className="border-t">
@@ -84,7 +91,11 @@ export function TransferQueue(): JSX.Element {
         <div className="flex items-center gap-2 text-xs">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
           <span className="font-medium">传输队列</span>
-          {deleteState && <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">删除中</span>}
+          {operationState && (
+            <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">
+              {OPERATION_INFO[operationState.operation].badge}中
+            </span>
+          )}
           {activeCount > 0 && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{activeCount} 进行中</span>}
           {doneCount > 0 && <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">{doneCount} 已完成</span>}
           {errorCount > 0 && <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">{errorCount} 失败</span>}
@@ -95,13 +106,13 @@ export function TransferQueue(): JSX.Element {
           </Button>
         )}
       </div>
-      {expanded && (deleteState || tasks.length > 0) && (
+      {expanded && (operationState || tasks.length > 0) && (
         <div className={cn('space-y-1.5 px-3 pb-2', tasks.length > 0 && 'max-h-[160px] overflow-y-auto')}>
-          {deleteState && <DeleteRow />}
+          {operationState && <OperationRow />}
           {[...tasks].reverse().map((task) => <TaskRow key={task.id} task={task} />)}
         </div>
       )}
-      {expanded && tasks.length === 0 && !deleteState && <div className="px-3 pb-2 text-center text-xs text-muted-foreground">暂无传输任务</div>}
+      {expanded && tasks.length === 0 && !operationState && <div className="px-3 pb-2 text-center text-xs text-muted-foreground">暂无传输任务</div>}
     </div>
   )
 }

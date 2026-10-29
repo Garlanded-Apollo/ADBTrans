@@ -14,7 +14,8 @@ import { matchesAnyKeyword, parseSearchKeywords } from '@/lib/searchKeywords'
 
 const INITIAL_BATCH = 50
 const LOAD_MORE_BATCH = 30
-const INTERNAL_FILE_DRAG_TYPE = 'application/x-adbtrans-remote-file'
+
+type RelocateMode = 'copy' | 'move'
 
 function getSearchErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
@@ -24,8 +25,7 @@ function getSearchErrorMessage(error: unknown): string {
 }
 
 function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
-  const types = Array.from(dataTransfer.types)
-  return types.includes('Files') && !types.includes(INTERNAL_FILE_DRAG_TYPE)
+  return Array.from(dataTransfer.types).includes('Files')
 }
 
 function getFileIcon(item: FileItem): JSX.Element {
@@ -119,7 +119,7 @@ interface FileTableProps {
 export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const { files, selected, setSelected, checkedPaths, toggleCheck, checkAll, clearChecks, loading, error, currentPath, pendingScrollTo, setPendingScrollTo, navigateTo, globalSearchKeyword, showGlobalSearch, setGlobalSearch, searchResults, searchLoading, searchSearched, searchError, setSearchResults } = useFileStore()
   const { current } = useDeviceStore()
-  const { addTask, startAllPending, updateTask } = useQueueStore()
+  const { addTask, startAllPending } = useQueueStore()
   const modesByExtension = usePreviewPreferenceStore((state) => state.modesByExtension)
   const setPreviewMode = usePreviewPreferenceStore((state) => state.setMode)
   const [widths, setWidths] = useState<number[]>(DEFAULT_WIDTHS)
@@ -130,6 +130,9 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const [renameTarget, setRenameTarget] = useState<FileItem | null>(null)
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [relocateInput, setRelocateInput] = useState<{ mode: RelocateMode; files: FileItem[] } | null>(null)
+  const [relocateConflicts, setRelocateConflicts] = useState<{ mode: RelocateMode; files: FileItem[]; dest: string; conflicts: string[] } | null>(null)
+  const [relocateFailures, setRelocateFailures] = useState<{ mode: RelocateMode; message: string; items: string[] } | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [searchContextMenu, setSearchContextMenu] = useState<{ x: number; y: number; item: SearchResult } | null>(null)
   const resizingRef = useRef<{ index: number; startX: number; startWidth: number; nextStartWidth: number } | null>(null)
@@ -400,7 +403,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     if (targetFiles.length === 0) return
 
     const queue = useQueueStore.getState()
-    queue.startDeletion(targetFiles.length)
+    queue.startOperation('delete', targetFiles.length)
 
     let failed: string[] = []
     try {
@@ -409,7 +412,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       console.error('Delete failed:', err)
       failed = targetFiles.map((f) => f.path)
     } finally {
-      queue.finishDeletion()
+      queue.finishOperation()
     }
     const failedSet = new Set(failed)
     useFileStore.getState().removeFilesFromList(targetFiles.map((f) => f.path).filter((p) => !failedSet.has(p)))
@@ -457,8 +460,6 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     for (const file of droppedFiles) {
       const filePath = window.api.getFilePath(file)
       if (!filePath) continue
-      // Skip files dragged from this app (in temp directory)
-      if (filePath.includes('adbtrans-drag')) continue
       const fileName = file.name
       const remotePath = `${currentPath}/${fileName}`
       addTask({
@@ -489,35 +490,80 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     setDragOver(false)
   }, [])
 
-  const handleFileDragStart = useCallback((e: React.DragEvent, item: FileItem) => {
-    if (!current?.serial) return
-    e.preventDefault()
-
-    const targetFiles = checkedPaths.size > 0 && checkedPaths.has(item.path)
+  const handleOpenRelocate = useCallback((mode: RelocateMode) => {
+    setContextMenu(null)
+    const targetFiles = checkedPaths.size > 0
       ? files.filter((f) => checkedPaths.has(f.path))
-      : [item]
+      : selected
+        ? [selected]
+        : []
+    if (targetFiles.length === 0) return
+    setRelocateInput({ mode, files: targetFiles })
+  }, [selected, checkedPaths, files])
 
-    const dragFiles: Array<{ remotePath: string; fileName: string; taskId: string; cacheKey: string }> = []
-    for (const f of targetFiles) {
-      const taskId = addTask({
-        serial: current.serial,
-        fileName: f.name,
-        fromPath: f.path,
-        toPath: f.name,
-        direction: 'pull',
-        source: 'drag'
-      })
-      updateTask(taskId, { status: 'running' })
-      dragFiles.push({
-        remotePath: f.path,
-        fileName: f.name,
-        taskId,
-        cacheKey: `${f.size}:${f.modified}:${f.type}`
-      })
+  const runRelocate = useCallback(async (mode: RelocateMode, targetFiles: FileItem[], dest: string) => {
+    if (!current?.serial) return
+    setRelocateInput(null)
+    setRelocateConflicts(null)
+
+    const queue = useQueueStore.getState()
+    queue.startOperation(mode, targetFiles.length)
+
+    let failures: Array<{ path: string; error: string }> = []
+    try {
+      failures = await window.api.relocatePaths(current.serial, mode, targetFiles.map((f) => f.path), dest)
+    } catch (err) {
+      console.error('Relocate failed:', err)
+      failures = targetFiles.map((f) => ({ path: f.path, error: err instanceof Error ? err.message : String(err) }))
+    } finally {
+      queue.finishOperation()
     }
 
-    window.api.dragDownload(current.serial, dragFiles)
-  }, [current?.serial, files, checkedPaths, addTask, updateTask])
+    // 移动后源目录内容发生变化，刷新当前目录
+    if (mode === 'move') {
+      await useFileStore.getState().loadCurrentPath(current.serial)
+    }
+
+    if (failures.length > 0) {
+      setRelocateFailures({
+        mode,
+        message: `${mode === 'copy' ? '复制' : '移动'}完成，但以下 ${failures.length} 项失败：`,
+        items: failures.map((f) => `${f.path.split('/').pop() || f.path}: ${f.error}`)
+      })
+    }
+  }, [current?.serial])
+
+  const confirmRelocateInput = useCallback(async (destRaw: string) => {
+    if (!current?.serial || !relocateInput) return
+    const dest = destRaw.trim().replace(/\/+$/, '') || '/'
+
+    if (!dest.startsWith('/')) {
+      setRelocateFailures({ mode: relocateInput.mode, message: '目标路径必须是手机上的绝对路径（以 / 开头）', items: [] })
+      setRelocateInput(null)
+      return
+    }
+
+    if (dest === currentPath) {
+      setRelocateFailures({ mode: relocateInput.mode, message: '目标目录不能是当前目录', items: [] })
+      setRelocateInput(null)
+      return
+    }
+
+    // 检查目标目录是否存在同名文件，存在则需二次确认覆盖
+    const targets = relocateInput.files.map((f) => (dest === '/' ? `/${f.name}` : `${dest}/${f.name}`))
+    let conflicts: string[] = []
+    try {
+      conflicts = await window.api.pathsExist(current.serial, targets)
+    } catch (err) {
+      console.error('pathsExist failed:', err)
+    }
+
+    if (conflicts.length > 0) {
+      setRelocateConflicts({ mode: relocateInput.mode, files: relocateInput.files, dest, conflicts })
+    } else {
+      await runRelocate(relocateInput.mode, relocateInput.files, dest)
+    }
+  }, [current?.serial, currentPath, relocateInput, runRelocate])
 
   const handleResizeStart = useCallback((e: React.MouseEvent, index: number) => {
     e.preventDefault()
@@ -798,14 +844,12 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
                         ? 'bg-primary/15 hover:bg-primary/15'
                         : 'hover:bg-muted/50'
                   )}
-                  draggable
                   onMouseDown={() => handleMouseDown(item, index)}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
                   onClick={(e) => handleClick(e, item, index)}
                   onDoubleClick={() => handleDoubleClick(item)}
                   onContextMenu={(e) => handleItemContextMenu(e, item)}
-                  onDragStart={(e) => handleFileDragStart(e, item)}
                 >
                   {showCheckboxes && (
                     <td className="pl-3 pr-2 align-middle" style={{ width: `${CHECKBOX_WIDTH}%` }}>
@@ -861,6 +905,8 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
           onRename={handleRename}
           onDelete={handleDelete}
           onDownload={handleDownload}
+          onCopyTo={() => handleOpenRelocate('copy')}
+          onMoveTo={() => handleOpenRelocate('move')}
           hasTarget={!!selected || checkedPaths.size > 0}
           isMultiSelect={checkedPaths.size > 1}
           previewExtension={(() => {
@@ -933,6 +979,50 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         destructive
         onConfirm={confirmDelete}
         onCancel={() => setDeleteConfirmOpen(false)}
+      />
+      <InputDialog
+        open={!!relocateInput}
+        title={relocateInput?.mode === 'move' ? '移动到' : '复制到'}
+        label="目标目录（手机上的绝对路径）"
+        placeholder="/sdcard/Download"
+        defaultValue={currentPath}
+        onConfirm={confirmRelocateInput}
+        onCancel={() => setRelocateInput(null)}
+      />
+      <ConfirmDialog
+        open={!!relocateConflicts}
+        title="目标存在同名文件"
+        message={(() => {
+          if (!relocateConflicts) return ''
+          const names = relocateConflicts.conflicts.map((p) => p.split('/').pop() || p)
+          const shown = names.slice(0, 10).join('\n')
+          const more = names.length > 10 ? `\n...等共 ${names.length} 项` : ''
+          return `目标目录中已存在同名文件/文件夹，继续将覆盖它们：\n\n${shown}${more}`
+        })()}
+        confirmLabel={relocateConflicts?.mode === 'move' ? '覆盖并移动' : '覆盖并复制'}
+        destructive
+        onConfirm={() => {
+          if (!relocateConflicts) return
+          runRelocate(relocateConflicts.mode, relocateConflicts.files, relocateConflicts.dest)
+        }}
+        onCancel={() => setRelocateConflicts(null)}
+      />
+      <ConfirmDialog
+        open={!!relocateFailures}
+        title={relocateFailures?.mode === 'move' ? '移动结果' : '复制结果'}
+        message={relocateFailures
+          ? `${relocateFailures.message}${
+              relocateFailures.items.length > 0
+                ? `\n\n${relocateFailures.items.slice(0, 20).join('\n')}${
+                    relocateFailures.items.length > 20 ? `\n...等共 ${relocateFailures.items.length} 项` : ''
+                  }`
+                : ''
+            }`
+          : ''}
+        confirmLabel="知道了"
+        hideCancel
+        onConfirm={() => setRelocateFailures(null)}
+        onCancel={() => setRelocateFailures(null)}
       />
     </div>
   )

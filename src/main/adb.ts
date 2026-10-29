@@ -575,79 +575,6 @@ export class AdbService extends EventEmitter {
     })
   }
 
-  private parseProgress(line: string): { percent: number } | null {
-    const m = line.match(/\[\s*(\d+)%\]/) || line.match(/(\d+)%/)
-    if (m) return { percent: parseInt(m[1], 10) }
-    return null
-  }
-
-  startTransfer(
-    id: string,
-    args: string[],
-    callbacks: TransferCallbacks
-  ): void {
-    const adbPath = findAdb()
-    const proc = spawn(adbPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
-    this.activeTransfers.set(id, proc)
-
-    let lastPercent = 0
-    const startTime = Date.now()
-    let stderrData = ''
-    let spawnFailed = false
-
-    console.log(`[transfer] ${args[2]} 开始: ${args[3]} -> ${args[4]}`)
-
-    const processOutput = (data: Buffer): void => {
-      const text = data.toString()
-      for (const line of text.split('\n')) {
-        const progress = this.parseProgress(line.trim())
-        if (progress && progress.percent !== lastPercent) {
-          lastPercent = progress.percent
-          const elapsed = (Date.now() - startTime) / 1000
-          const speed = elapsed > 0 ? `${(lastPercent / elapsed * 100).toFixed(0)}%` : '--'
-          callbacks.onProgress(lastPercent, speed)
-        }
-      }
-    }
-
-    proc.stdout?.on('data', processOutput)
-    proc.stderr?.on('data', (data: Buffer) => {
-      stderrData += data.toString()
-      processOutput(data)
-    })
-
-    proc.on('close', (code) => {
-      // spawn 失败时 'error' 已经回调过，避免重复上报
-      if (spawnFailed) return
-      this.activeTransfers.delete(id)
-      const source = args[3] || ''
-      const target = args[4] || ''
-      if (code === 0) {
-        console.log(`[transfer] ${args[2]} 完成: ${source} -> ${target}`)
-        callbacks.onProgress(100, '--')
-        callbacks.onDone()
-      } else if (code !== null) {
-        const stderrLines = stderrData.split('\n').map((line) => line.trim()).filter(Boolean)
-        console.error(
-          `[transfer] ${args[2]} 失败（退出码 ${code}）: ${source} -> ${target}\n${stderrData.trim() || '(无 stderr 输出)'}`
-        )
-        const detail = stderrLines.length > 0 ? `: ${stderrLines[0]}` : ''
-        const extraLines = stderrLines.length > 1 ? `\n${stderrLines.slice(-3).join('\n')}` : ''
-        callbacks.onError(`进程退出，代码: ${code}${detail}${extraLines}`)
-      } else {
-        console.warn(`[transfer] ${args[2]} 进程被终止（可能已取消）: ${source} -> ${target}`)
-        callbacks.onError('传输已取消或进程被终止')
-      }
-    })
-
-    proc.on('error', (err) => {
-      spawnFailed = true
-      this.activeTransfers.delete(id)
-      console.error(`[transfer] ${args[2]} 启动失败: ${args[3]} -> ${args[4]}`, err)
-      callbacks.onError(err.message)
-    })
-  }
-
   cancelTransfer(id: string): boolean {
     const proc = this.activeTransfers.get(id)
     if (proc) {
@@ -806,6 +733,103 @@ export class AdbService extends EventEmitter {
     })
     await Promise.all(workers)
     return failed
+  }
+
+  /**
+   * Check which of the given paths exist on the device.
+   * Returns the subset that exists, in input order.
+   */
+  async pathsExist(serial: string, paths: string[]): Promise<string[]> {
+    const existing: string[] = []
+    const workers = Array.from({ length: Math.min(3, paths.length) }, async () => {
+      let nextIndex = 0
+      while (nextIndex < paths.length) {
+        const path = paths[nextIndex++]
+        try {
+          await execAdb(['-s', serial, 'shell', `[ -e ${shellQuote(path)} ]`], 10000)
+          existing.push(path)
+        } catch {
+          /* path does not exist */
+        }
+      }
+    })
+    await Promise.all(workers)
+    return existing
+  }
+
+  private getRelocateTarget(dest: string, src: string): string {
+    const name = src.split('/').pop() || src
+    return dest === '/' ? `/${name}` : `${dest}/${name}`
+  }
+
+  private async relocateOne(serial: string, mode: 'copy' | 'move', src: string, dest: string): Promise<void> {
+    const target = this.getRelocateTarget(dest, src)
+    if (target === src) throw new Error('目标路径与源路径相同')
+    if (dest === src || dest.startsWith(`${src}/`)) throw new Error('目标目录不能是源目录本身或其子目录')
+
+    if (mode === 'copy') {
+      await execAdb(['-s', serial, 'shell', `cp -r ${shellQuote(src)} ${shellQuote(dest)}/`], 10 * 60 * 1000)
+      return
+    }
+
+    try {
+      await execAdb(['-s', serial, 'shell', `mv ${shellQuote(src)} ${shellQuote(dest)}/`], 10 * 60 * 1000)
+    } catch (err) {
+      const message = (err as Error).message
+      // 跨分区（内置存储 <-> SD 卡）不支持 mv，退化为 复制 + 删除
+      if (!/cross-device/i.test(message)) throw err
+      await execAdb(['-s', serial, 'shell', `cp -r ${shellQuote(src)} ${shellQuote(dest)}/`], 10 * 60 * 1000)
+      await execAdb(['-s', serial, 'shell', `rm -rf ${shellQuote(src)}`], 10 * 60 * 1000)
+    }
+  }
+
+  /**
+   * Copy or move the given paths into destDir on the device.
+   * Returns the paths that failed together with the reason.
+   */
+  async relocatePaths(
+    serial: string,
+    mode: 'copy' | 'move',
+    sources: string[],
+    destDir: string,
+    onProgress?: (done: number, total: number, currentName: string) => void
+  ): Promise<Array<{ path: string; error: string }>> {
+    const cleanPaths = sources.map((p) => p.trim()).filter(Boolean)
+    const cleanDest = destDir.trim().replace(/\/+$/, '') || '/'
+    if (cleanPaths.length === 0) return []
+    if (!cleanDest.startsWith('/')) {
+      return cleanPaths.map((path) => ({ path, error: '目标路径必须是绝对路径' }))
+    }
+
+    // 确保目标目录存在
+    try {
+      await execAdb(['-s', serial, 'shell', `mkdir -p ${shellQuote(cleanDest)}`], 30000)
+    } catch (err) {
+      return cleanPaths.map((path) => ({ path, error: `无法创建目标目录: ${(err as Error).message}` }))
+    }
+
+    const failures: Array<{ path: string; error: string }> = []
+    const total = cleanPaths.length
+    let done = 0
+    let nextIndex = 0
+
+    const workers = Array.from({ length: Math.min(3, cleanPaths.length) }, async () => {
+      while (nextIndex < cleanPaths.length) {
+        const src = cleanPaths[nextIndex++]
+        try {
+          await this.relocateOne(serial, mode, src, cleanDest)
+        } catch (err) {
+          const error = err instanceof Error ? err.message.split('\n').filter(Boolean).slice(-1)[0] || err.message : String(err)
+          failures.push({ path: src, error })
+        }
+        done += 1
+        onProgress?.(done, total, src.split('/').pop() || src)
+      }
+    })
+    await Promise.all(workers)
+
+    console.log(`[relocate] ${mode === 'copy' ? '复制' : '移动'}完成: ${total - failures.length}/${total} -> ${cleanDest}${failures.length > 0 ? `，失败 ${failures.length}` : ''}`)
+    return failures
   }
 
   async searchFiles(serial: string, keywords: string[], searchPath: string = '/'): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> {

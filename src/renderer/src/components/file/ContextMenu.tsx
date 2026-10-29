@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { FolderPlus, Edit3, Trash2, Download, Eye, FileText, Image, Info, Check, ScanLine } from 'lucide-react'
+import { FolderPlus, Edit3, Trash2, Download, Copy, Scissors, Eye, FileText, Image, Info, Check, ScanLine } from 'lucide-react'
 import type { PreviewMode } from '@/stores/previewPreferenceStore'
 
 interface ContextMenuProps {
@@ -10,6 +10,8 @@ interface ContextMenuProps {
   onRename: () => void
   onDelete: () => void
   onDownload: () => void
+  onCopyTo: () => void
+  onMoveTo: () => void
   hasTarget: boolean
   isMultiSelect?: boolean
   previewExtension?: string
@@ -17,7 +19,7 @@ interface ContextMenuProps {
   onSetPreviewMode?: (mode: PreviewMode) => void
 }
 
-export function ContextMenu({ x, y, onClose, onNewFolder, onRename, onDelete, onDownload, hasTarget, isMultiSelect, previewExtension, previewMode, onSetPreviewMode }: ContextMenuProps): JSX.Element {
+export function ContextMenu({ x, y, onClose, onNewFolder, onRename, onDelete, onDownload, onCopyTo, onMoveTo, hasTarget, isMultiSelect, previewExtension, previewMode, onSetPreviewMode }: ContextMenuProps): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -69,6 +71,20 @@ export function ContextMenu({ x, y, onClose, onNewFolder, onRename, onDelete, on
           >
             <Download className="h-3.5 w-3.5" />
             下载到电脑
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-muted"
+            onClick={(e) => { e.stopPropagation(); onCopyTo() }}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            复制到...
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-muted"
+            onClick={(e) => { e.stopPropagation(); onMoveTo() }}
+          >
+            <Scissors className="h-3.5 w-3.5" />
+            移动到...
           </button>
           {!isMultiSelect && previewExtension && onSetPreviewMode && (
             <>

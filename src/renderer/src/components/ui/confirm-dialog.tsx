@@ -11,6 +11,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string
   cancelLabel?: string
   destructive?: boolean
+  hideCancel?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -80,6 +81,7 @@ export function ConfirmDialog({
   confirmLabel = '确定',
   cancelLabel = '取消',
   destructive = false,
+  hideCancel = false,
   onConfirm,
   onCancel
 }: ConfirmDialogProps): JSX.Element {
@@ -118,7 +120,7 @@ export function ConfirmDialog({
           <ConfirmMessage message={message} />
         </div>
         <DialogFooter className="shrink-0">
-          <Button variant="outline" onClick={onCancel}>{cancelLabel}</Button>
+          {!hideCancel && <Button variant="outline" onClick={onCancel}>{cancelLabel}</Button>}
           <Button
             ref={confirmRef}
             variant={destructive ? 'destructive' : 'default'}

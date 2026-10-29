@@ -6,24 +6,11 @@ import { thumbnailQueue, previewQueue } from './requestQueue'
 import { checkForUpdates, getAppRuntimeInfo, openUpdateUrl } from './update'
 import { scriptService, type ScriptRunRequest } from './scriptService'
 import { getLogInfo, clearLogs, openLogDirectory } from './logger'
-import { existsSync, mkdirSync, rmSync } from 'fs'
-import { tmpdir } from 'os'
-import { createHash } from 'crypto'
+import { existsSync } from 'fs'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
-
-interface DragDownloadItem {
-  remotePath: string
-  fileName: string
-  taskId: string
-  cacheKey?: string
-}
-
-const dragCacheRoot = join(tmpdir(), 'adbtrans-drag', String(process.pid))
-const dragDownloads = new Map<string, Promise<string>>()
-const completedDragDownloads = new Map<string, string>()
 
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -58,38 +45,6 @@ function getIconPath(): string {
   if (process.platform === 'darwin' && existsSync(pngPath)) return pngPath
   if (existsSync(icnsPath)) return icnsPath
   return pngPath
-}
-
-function getFileTypeIcon(fileName: string): Electron.NativeImage {
-  const ext = fileName.split('.').pop()?.toLowerCase() || ''
-  const iconDir = join(process.resourcesPath, 'file-icons')
-  if (!existsSync(iconDir)) {
-    // Dev mode: icons are in project root resources
-    const devIconDir = join(process.cwd(), 'resources', 'file-icons')
-    if (existsSync(devIconDir)) {
-      return loadFileIcon(devIconDir, ext)
-    }
-    return nativeImage.createEmpty()
-  }
-  return loadFileIcon(iconDir, ext)
-}
-
-function loadFileIcon(iconDir: string, ext: string): Electron.NativeImage {
-  const map: Record<string, string> = {
-    'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'webp': 'image', 'bmp': 'image', 'svg': 'image',
-    'mp4': 'video', 'mkv': 'video', 'avi': 'video', 'mov': 'video', 'webm': 'video',
-    'mp3': 'music', 'wav': 'music', 'flac': 'music', 'aac': 'music', 'ogg': 'music',
-    'json': 'json',
-    'xml': 'code', 'html': 'code', 'css': 'code', 'js': 'code', 'ts': 'code', 'py': 'code', 'java': 'code', 'kt': 'code',
-    'txt': 'text', 'log': 'text', 'md': 'text', 'csv': 'text',
-    'zip': 'archive', 'tar': 'archive', 'gz': 'archive', 'rar': 'archive', '7z': 'archive', 'apk': 'archive'
-  }
-  const iconName = map[ext] || 'generic'
-  const iconPath = join(iconDir, `${iconName}.png`)
-  if (existsSync(iconPath)) {
-    return nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32 })
-  }
-  return nativeImage.createFromPath(join(iconDir, 'generic.png')).resize({ width: 32, height: 32 })
 }
 
 function createWindow(): void {
@@ -131,86 +86,6 @@ function createWindow(): void {
   adbService.on('devices-changed', (devices) => {
     mainWindow?.webContents.send('adb:device-changed', devices)
   })
-}
-
-function startDragFiles(tempFiles: string[], fileNames: string[]): void {
-  if (!mainWindow) return
-
-  if (tempFiles.length === 0 || tempFiles.some((file) => !existsSync(file))) return
-
-  let icon: Electron.NativeImage
-  if (tempFiles.length === 1) {
-    const ext = fileNames[0].split('.').pop()?.toLowerCase() || ''
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext) && existsSync(tempFiles[0])) {
-      try {
-        const image = nativeImage.createFromPath(tempFiles[0])
-        const size = image.getSize()
-        if (size.width > 0 && size.height > 0) {
-          const maxSize = 64
-          icon = (size.width > maxSize || size.height > maxSize)
-            ? image.resize({ width: Math.round(size.width * (maxSize / Math.max(size.width, size.height))), height: Math.round(size.height * (maxSize / Math.max(size.width, size.height))) })
-            : image
-        } else {
-          icon = getFileTypeIcon(fileNames[0])
-        }
-      } catch {
-        icon = getFileTypeIcon(fileNames[0])
-      }
-    } else {
-      icon = getFileTypeIcon(fileNames[0])
-    }
-    if (!existsSync(tempFiles[0])) return
-    mainWindow.webContents.startDrag({ file: tempFiles[0], icon })
-    return
-  }
-
-  icon = getFileTypeIcon(fileNames[0])
-  mainWindow.webContents.startDrag({ file: tempFiles[0], icon, files: tempFiles })
-}
-
-function getDragCacheId(serial: string, file: Pick<DragDownloadItem, 'remotePath' | 'cacheKey'>): string {
-  return createHash('sha256')
-    .update(`${serial}\0${file.remotePath}\0${file.cacheKey || ''}`)
-    .digest('hex')
-}
-
-function prepareDragFile(serial: string, file: DragDownloadItem): Promise<string> {
-  const cacheId = getDragCacheId(serial, file)
-  const cachedPath = completedDragDownloads.get(cacheId)
-  if (cachedPath && existsSync(cachedPath)) return Promise.resolve(cachedPath)
-
-  const activeDownload = dragDownloads.get(cacheId)
-  if (activeDownload) return activeDownload
-
-  const safeName = file.fileName.replace(/[\\/]/g, '_') || 'unnamed'
-  const targetDir = join(dragCacheRoot, cacheId)
-  const targetPath = join(targetDir, safeName)
-  rmSync(targetDir, { recursive: true, force: true })
-  mkdirSync(targetDir, { recursive: true })
-
-  const download = new Promise<string>((resolve, reject) => {
-    adbService.startTransfer(file.taskId, ['-s', serial, 'pull', file.remotePath, targetPath], {
-      onProgress: () => {},
-      onDone: () => {
-        if (!existsSync(targetPath)) {
-          rmSync(targetDir, { recursive: true, force: true })
-          reject(new Error('ADB 已完成，但临时文件不存在'))
-          return
-        }
-        completedDragDownloads.set(cacheId, targetPath)
-        resolve(targetPath)
-      },
-      onError: (err) => {
-        rmSync(targetDir, { recursive: true, force: true })
-        reject(new Error(err))
-      }
-    })
-  }).finally(() => {
-    dragDownloads.delete(cacheId)
-  })
-
-  dragDownloads.set(cacheId, download)
-  return download
 }
 
 function registerIpcHandlers(): void {
@@ -434,34 +309,16 @@ function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.on('adb:download-for-drag', async (_e, serial: string, remotePath: string, fileName: string) => {
-    try {
-      const tempFile = await prepareDragFile(serial, { remotePath, fileName, taskId: `drag-${Date.now()}` })
-      startDragFiles([tempFile], [fileName])
-    } catch (err) {
-      console.error('[drag] failed:', err)
-    }
-  })
-
-  ipcMain.on('adb:drag-download', async (_e, serial: string, files: DragDownloadItem[]) => {
-    if (files.length === 0) return
-
-    const results = await Promise.all(files.map(async (file) => {
-      try {
-        const tempFile = await prepareDragFile(serial, file)
-        mainWindow?.webContents.send('adb:transfer-done', { id: file.taskId })
-        return tempFile
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        mainWindow?.webContents.send('adb:transfer-error', { id: file.taskId, error: message })
-        return null
+  ipcMain.handle('adb:relocate-paths', async (_e, serial: string, mode: 'copy' | 'move', sources: string[], destDir: string) => {
+    const sender = _e.sender
+    return adbService.relocatePaths(serial, mode, sources, destDir, (done, total, currentName) => {
+      if (!sender.isDestroyed()) {
+        sender.send('adb:relocate-progress', { mode, done, total, name: currentName })
       }
-    }))
-
-    if (results.every((file): file is string => file !== null)) {
-      startDragFiles(results, files.map((file) => file.fileName))
-    }
+    })
   })
+
+  ipcMain.handle('adb:paths-exist', (_e, serial: string, paths: string[]) => adbService.pathsExist(serial, paths))
 }
 
 app.whenReady().then(() => {

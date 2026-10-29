@@ -59,8 +59,9 @@ interface ElectronAPI {
   selectFiles: () => Promise<string[] | null>
   selectUploadDirectory: () => Promise<string | null>
   listLocalDirectory: (dirPath: string) => Promise<{ name: string; isDirectory: boolean }[]>
-  startDrag: (serial: string, remotePath: string, fileName: string) => void
-  dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string; cacheKey: string }>) => void
+  relocatePaths: (serial: string, mode: 'copy' | 'move', sources: string[], destDir: string) => Promise<Array<{ path: string; error: string }>>
+  pathsExist: (serial: string, paths: string[]) => Promise<string[]>
+  onRelocateProgress: (callback: (data: { mode: 'copy' | 'move'; done: number; total: number; name: string }) => void) => void
   searchFiles: (serial: string, keywords: string[], searchPath?: string) => Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>>
   getFilePath: (file: File) => string
   getAutoLaunch: () => Promise<boolean>

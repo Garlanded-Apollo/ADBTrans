@@ -71,6 +71,13 @@ const api = {
     ipcRenderer.invoke('adb:delete', serial, remotePath),
   deletePaths: (serial: string, remotePaths: string[]): Promise<string[]> =>
     ipcRenderer.invoke('adb:delete-paths', serial, remotePaths),
+  relocatePaths: (serial: string, mode: 'copy' | 'move', sources: string[], destDir: string): Promise<Array<{ path: string; error: string }>> =>
+    ipcRenderer.invoke('adb:relocate-paths', serial, mode, sources, destDir),
+  pathsExist: (serial: string, paths: string[]): Promise<string[]> =>
+    ipcRenderer.invoke('adb:paths-exist', serial, paths),
+  onRelocateProgress: (callback: (data: { mode: 'copy' | 'move'; done: number; total: number; name: string }) => void): void => {
+    ipcRenderer.on('adb:relocate-progress', (_event, data) => callback(data))
+  },
   onDeleteProgress: (callback: (data: { done: number; total: number; name: string }) => void): void => {
     ipcRenderer.on('adb:delete-progress', (_event, data) => callback(data))
   },
@@ -86,12 +93,6 @@ const api = {
     ipcRenderer.invoke('dialog:select-upload-directory'),
   listLocalDirectory: (dirPath: string): Promise<{ name: string; isDirectory: boolean }[]> =>
     ipcRenderer.invoke('fs:list-directory', dirPath),
-  startDrag: (serial: string, remotePath: string, fileName: string): void => {
-    ipcRenderer.send('adb:download-for-drag', serial, remotePath, fileName)
-  },
-  dragDownload: (serial: string, files: Array<{ remotePath: string; fileName: string; taskId: string; cacheKey: string }>): void => {
-    ipcRenderer.send('adb:drag-download', serial, files)
-  },
   searchFiles: (serial: string, keywords: string[], searchPath?: string): Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>> =>
     ipcRenderer.invoke('adb:search', serial, keywords, searchPath),
   getFilePath: (file: File): string => {

@@ -15,10 +15,12 @@ export interface QueueTask {
   remaining: string
   status: 'pending' | 'running' | 'done' | 'error'
   error?: string
-  source?: 'drag'
 }
 
-export interface DeleteState {
+export type OperationKind = 'delete' | 'copy' | 'move'
+
+export interface OperationState {
+  operation: OperationKind
   done: number
   total: number
   fileName: string
@@ -26,16 +28,16 @@ export interface DeleteState {
 
 interface QueueStore {
   tasks: QueueTask[]
-  deleteState: DeleteState | null
+  operationState: OperationState | null
   addTask: (task: Omit<QueueTask, 'id' | 'progress' | 'speed' | 'remaining' | 'status'>) => string
   updateTask: (id: string, updates: Partial<QueueTask>) => void
   removeTask: (id: string) => void
   clearDone: () => void
   startNextPending: () => QueueTask | null
   startAllPending: () => QueueTask[]
-  startDeletion: (total: number) => void
-  updateDeletionProgress: (done: number, total: number, fileName: string) => void
-  finishDeletion: () => void
+  startOperation: (operation: OperationKind, total: number) => void
+  updateOperationProgress: (operation: OperationKind, done: number, total: number, fileName: string) => void
+  finishOperation: () => void
 }
 
 let nextId = 1
@@ -44,7 +46,7 @@ let pendingScrollFile: string | null = null
 
 export const useQueueStore = create<QueueStore>((set, get) => ({
   tasks: [],
-  deleteState: null,
+  operationState: null,
   addTask: (task) => {
     const id = String(nextId++)
     set((s) => ({ tasks: [...s.tasks, { ...task, id, progress: 0, speed: '--', remaining: '--', status: 'pending' }] }))
@@ -79,14 +81,18 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     }
     return pending
   },
-  startDeletion: (total) => set({ deleteState: { done: 0, total, fileName: '准备删除...' } }),
-  updateDeletionProgress: (done, total, fileName) => set({ deleteState: { done, total, fileName } }),
-  finishDeletion: () => set({ deleteState: null })
+  startOperation: (operation, total) => set({ operationState: { operation, done: 0, total, fileName: '准备中...' } }),
+  updateOperationProgress: (operation, done, total, fileName) => set({ operationState: { operation, done, total, fileName } }),
+  finishOperation: () => set({ operationState: null })
 }))
 
 export function initTransferListeners(): void {
   window.api.onDeleteProgress(({ done, total, name }) => {
-    useQueueStore.getState().updateDeletionProgress(done, total, name)
+    useQueueStore.getState().updateOperationProgress('delete', done, total, name)
+  })
+
+  window.api.onRelocateProgress(({ mode, done, total, name }) => {
+    useQueueStore.getState().updateOperationProgress(mode, done, total, name)
   })
 
   window.api.onTransferProgress(({ id, percent, speed }) => {
@@ -132,7 +138,6 @@ export function initTransferListeners(): void {
 }
 
 export function executeTask(task: QueueTask): void {
-  if (task.source === 'drag') return
   if (task.direction === 'pull') {
     window.api.pullFile(task.id, task.serial, task.fromPath, task.toPath)
   } else {
