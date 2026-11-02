@@ -75,6 +75,10 @@ const api = {
     ipcRenderer.invoke('adb:relocate-paths', serial, mode, sources, destDir),
   pathsExist: (serial: string, paths: string[]): Promise<string[]> =>
     ipcRenderer.invoke('adb:paths-exist', serial, paths),
+  getDeviceStats: (serial: string): Promise<{
+    storage: { totalKB: number; usedKB: number; freeKB: number } | null
+    memory: { totalKB: number; usedKB: number; freeKB: number } | null
+  }> => ipcRenderer.invoke('adb:device-stats', serial),
   onRelocateProgress: (callback: (data: { mode: 'copy' | 'move'; done: number; total: number; name: string }) => void): void => {
     ipcRenderer.on('adb:relocate-progress', (_event, data) => callback(data))
   },

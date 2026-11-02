@@ -25,10 +25,15 @@ interface SettingsDialogProps {
 type SettingsPage = 'main' | 'about'
 
 function getUpdateErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error)
-  if (message.includes('检查更新超时')) return '检查更新超时，请检查网络连接后重试'
-  if (message.includes('限制了检查频率')) return '检查次数较多，请稍后再试'
+  const raw = error instanceof Error ? error.message : String(error)
+  // IPC 会把主进程的错误包装成 "Error invoking remote method 'xxx': Error: ..."
+  const message = raw
+    .replace(/^Error:\s*/, '')
+    .replace(/^Error invoking remote method '[^']*':\s*/, '')
+    .replace(/^Error:\s*/, '')
+    .trim()
   if (message.includes('无法识别版本号')) return 'Release 版本号格式不正确'
+  if (/^(检查更新|GitHub)/.test(message)) return message
   return '检查更新失败，请检查网络连接后重试'
 }
 
@@ -168,7 +173,7 @@ export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: Set
               </div>
 
               <button
-                className="flex w-full items-center gap-3 pt-4 text-left hover:text-primary"
+                className="flex w-full items-center gap-3 py-4 text-left hover:text-primary"
                 onClick={handleOpenAbout}
               >
                 <Info className="h-4 w-4 shrink-0 text-muted-foreground" />

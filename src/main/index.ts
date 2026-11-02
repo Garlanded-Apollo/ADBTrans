@@ -319,6 +319,8 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('adb:paths-exist', (_e, serial: string, paths: string[]) => adbService.pathsExist(serial, paths))
+
+  ipcMain.handle('adb:device-stats', (_e, serial: string) => adbService.getDeviceStats(serial))
 }
 
 app.whenReady().then(() => {

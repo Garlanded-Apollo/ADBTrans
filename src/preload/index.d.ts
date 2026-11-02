@@ -61,6 +61,10 @@ interface ElectronAPI {
   listLocalDirectory: (dirPath: string) => Promise<{ name: string; isDirectory: boolean }[]>
   relocatePaths: (serial: string, mode: 'copy' | 'move', sources: string[], destDir: string) => Promise<Array<{ path: string; error: string }>>
   pathsExist: (serial: string, paths: string[]) => Promise<string[]>
+  getDeviceStats: (serial: string) => Promise<{
+    storage: { totalKB: number; usedKB: number; freeKB: number } | null
+    memory: { totalKB: number; usedKB: number; freeKB: number } | null
+  }>
   onRelocateProgress: (callback: (data: { mode: 'copy' | 'move'; done: number; total: number; name: string }) => void) => void
   searchFiles: (serial: string, keywords: string[], searchPath?: string) => Promise<Array<{ name: string; path: string; type: 'file' | 'folder' }>>
   getFilePath: (file: File) => string

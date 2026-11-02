@@ -225,6 +225,53 @@ function parseLsOutput(output: string, parentPath: string): FileEntry[] {
   return entries
 }
 
+export interface DeviceStats {
+  storage: { totalKB: number; usedKB: number; freeKB: number } | null
+  memory: { totalKB: number; usedKB: number; freeKB: number } | null
+}
+
+function dfValueToKB(raw: string): number {
+  // 兼容 1K-blocks 纯数字与人类可读后缀（如 103G）
+  const m = raw.match(/^(\d+(?:\.\d+)?)([KMGT])?$/i)
+  if (!m) return NaN
+  const value = parseFloat(m[1])
+  const unit = (m[2] || '').toUpperCase()
+  const mult = unit === 'T' ? 1024 * 1024 * 1024 : unit === 'G' ? 1024 * 1024 : unit === 'M' ? 1024 : 1
+  return Math.round(value * mult)
+}
+
+function parseDfDataLine(output: string): DeviceStats['storage'] {
+  for (const raw of output.split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('Filesystem')) continue
+    const parts = line.split(/\s+/)
+    // Filesystem 1K-blocks Used Available Use%/Capacity Mounted on
+    if (parts.length < 6) continue
+    const mount = parts[parts.length - 1]
+    // 部分机型 df /data 显示挂载点为 /data/user/0 等
+    if (mount !== '/data' && !mount.startsWith('/data/')) continue
+    const totalKB = dfValueToKB(parts[1])
+    const usedKB = dfValueToKB(parts[2])
+    const freeKB = dfValueToKB(parts[3])
+    if (Number.isFinite(totalKB) && Number.isFinite(freeKB) && totalKB > 0) {
+      return { totalKB, usedKB, freeKB }
+    }
+  }
+  return null
+}
+
+function parseMeminfo(output: string): DeviceStats['memory'] {
+  const pick = (key: string): number => {
+    const m = output.match(new RegExp(`${key}:\\s+(\\d+)`))
+    return m ? parseInt(m[1], 10) : 0
+  }
+  const totalKB = pick('MemTotal')
+  if (totalKB <= 0) return null
+  let freeKB = pick('MemAvailable')
+  if (freeKB <= 0) freeKB = pick('MemFree') + pick('Buffers') + pick('Cached')
+  return { totalKB, usedKB: Math.max(0, totalKB - freeKB), freeKB }
+}
+
 export class AdbService extends EventEmitter {
   private tracker: ReturnType<typeof spawn> | null = null
   private trackingRequested = false
@@ -268,6 +315,17 @@ export class AdbService extends EventEmitter {
     this._devices = devices
     this.emit('devices-changed', devices)
     return devices
+  }
+
+  async getDeviceStats(serial: string): Promise<DeviceStats> {
+    const [dfOutput, meminfoOutput] = await Promise.all([
+      execAdb(['-s', serial, 'shell', 'df', '/data'], 10000).catch(() => ''),
+      execAdb(['-s', serial, 'shell', 'cat', '/proc/meminfo'], 10000).catch(() => '')
+    ])
+    return {
+      storage: parseDfDataLine(dfOutput),
+      memory: parseMeminfo(meminfoOutput)
+    }
   }
 
   async connect(host: string): Promise<{ success: boolean; message: string }> {
