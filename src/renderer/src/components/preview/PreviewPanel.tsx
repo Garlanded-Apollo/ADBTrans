@@ -6,6 +6,7 @@ import { useFileStore } from '@/stores/fileStore'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { formatBytes, formatDate } from '@/lib/utils'
 import { getBuiltInPreviewMode, getFileExtension, usePreviewPreferenceStore, type PreviewMode, type RawImageDimensions } from '@/stores/previewPreferenceStore'
+import { getImageMimeType, hasImageSignature } from '@/lib/image'
 
 function decodeBase64(base64: string): Uint8Array {
   const binary = atob(base64)
@@ -154,19 +155,6 @@ function Nv21SizeForm({ extension, fileName, fileSize, initialDimensions, onSave
   )
 }
 
-function getMimeType(name: string): string {
-  const ext = getFileExtension(name)
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    bmp: 'image/bmp'
-  }
-  return mimeMap[ext] || 'application/octet-stream'
-}
-
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }): JSX.Element {
   return (
     <div className="flex min-w-0 items-start gap-2">
@@ -251,7 +239,9 @@ export function PreviewPanel(): JSX.Element {
             if (previewType === 'nv21' && rawDimensions) {
               setImageSrc(nv21ToDataUrl(decodeBase64(base64), rawDimensions.width, rawDimensions.height))
             } else {
-              const mimeType = getMimeType(previewFile.name)
+              // 后缀为图片但内容不是图片（例如改了扩展名的文本文件）时直接给出提示
+              if (!hasImageSignature(base64)) throw new Error('该文件不是有效的图片，无法预览')
+              const mimeType = getImageMimeType(previewFile.name) || 'application/octet-stream'
               setImageSrc(`data:${mimeType};base64,${base64}`)
             }
           }
@@ -352,8 +342,12 @@ export function PreviewPanel(): JSX.Element {
               <div className="flex items-center justify-center">
                 <img
                   src={imageSrc}
-                  alt={previewFile.name}
-                  className="max-h-full max-w-full object-contain"
+                  alt=""
+                  onError={() => {
+                    setImageSrc(null)
+                    setError('该文件不是有效的图片，无法预览')
+                  }}
+                  className="block max-h-full max-w-full object-contain"
                   style={{ maxHeight: 'calc(100vh - 350px)' }}
                 />
               </div>

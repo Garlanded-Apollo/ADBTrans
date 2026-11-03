@@ -37,12 +37,23 @@ interface QueueStore {
   startAllPending: () => QueueTask[]
   startOperation: (operation: OperationKind, total: number) => void
   updateOperationProgress: (operation: OperationKind, done: number, total: number, fileName: string) => void
-  finishOperation: () => void
+  finishOperation: (operation?: OperationKind, total?: number) => void
 }
 
 let nextId = 1
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
 let pendingScrollFile: string | null = null
+let operationSeq = 0
+let operationFinishTimer: ReturnType<typeof setTimeout> | null = null
+
+const OPERATION_AUTO_FINISH_MS = 1500
+
+function clearOperationFinishTimer(): void {
+  if (operationFinishTimer) {
+    clearTimeout(operationFinishTimer)
+    operationFinishTimer = null
+  }
+}
 
 export const useQueueStore = create<QueueStore>((set, get) => ({
   tasks: [],
@@ -81,9 +92,40 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     }
     return pending
   },
-  startOperation: (operation, total) => set({ operationState: { operation, done: 0, total, fileName: '准备中...' } }),
-  updateOperationProgress: (operation, done, total, fileName) => set({ operationState: { operation, done, total, fileName } }),
-  finishOperation: () => set({ operationState: null })
+  startOperation: (operation, total) => {
+    operationSeq += 1
+    clearOperationFinishTimer()
+    set({ operationState: { operation, done: 0, total, fileName: '准备中...' } })
+  },
+  updateOperationProgress: (operation, done, total, fileName) => {
+    const current = get().operationState
+    // 忽略已经结束的操作残留的进度事件，避免“正在删除/复制”重新出现并永久停留
+    if (!current || current.operation !== operation || current.total !== total) return
+
+    const seq = operationSeq
+    clearOperationFinishTimer()
+    set({ operationState: { operation, done, total, fileName } })
+
+    // 兜底：进度已满但结束信号没有到达时，短暂展示后自动收起
+    if (total > 0 && done >= total) {
+      operationFinishTimer = setTimeout(() => {
+        operationFinishTimer = null
+        if (operationSeq !== seq) return
+        const latest = get().operationState
+        if (latest && latest.operation === operation && latest.done >= latest.total) {
+          set({ operationState: null })
+        }
+      }, OPERATION_AUTO_FINISH_MS)
+    }
+  },
+  finishOperation: (operation, total) => {
+    // 另一个操作已经接管进度条时，旧操作的结束信号不应把它清掉
+    const current = get().operationState
+    if (current && operation && (current.operation !== operation || current.total !== total)) return
+    operationSeq += 1
+    clearOperationFinishTimer()
+    set({ operationState: null })
+  }
 }))
 
 export function initTransferListeners(): void {

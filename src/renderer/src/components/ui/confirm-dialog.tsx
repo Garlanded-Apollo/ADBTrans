@@ -62,7 +62,7 @@ function ConfirmMessage({ message }: { message: string }): JSX.Element {
         </div>
       )}
       {itemLines.length > 0 && (
-        <div className="max-h-[min(45vh,360px)] min-w-0 space-y-1 overflow-auto rounded-md border bg-muted/25 p-2">
+        <div className="min-w-0 space-y-1 rounded-md border bg-muted/25 p-2">
           {itemLines.map((line, index) => (
             <div key={`${line}-${index}`} className="min-w-0 rounded px-1.5 py-1 hover:bg-muted">
               <MiddleEllipsisText value={line} />

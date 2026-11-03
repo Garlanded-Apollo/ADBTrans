@@ -106,22 +106,48 @@ export function getAdbExecutablePath(): string {
 function execAdb(args: string[], timeout = 15000): Promise<string> {
   return new Promise((resolve, reject) => {
     const adbPath = findAdb()
-    execFile(adbPath, args, { timeout, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) {
-        const reason = err.killed
-          ? `Command timed out after ${timeout}ms`
-          : err.message
-        const diagnostics = [
-          `ADB error: ${reason}`,
-          err.code !== undefined ? `code: ${err.code}` : '',
-          err.signal ? `signal: ${err.signal}` : '',
-          stderr.trim() ? `stderr: ${stderr.trim()}` : ''
-        ].filter(Boolean)
-        reject(new Error(diagnostics.join('\n')))
-        return
-      }
-      resolve(stdout.trim())
+    let settled = false
+    let guard: ReturnType<typeof setTimeout> | null = null
+
+    const settle = (callback: () => void): void => {
+      if (settled) return
+      settled = true
+      if (guard) clearTimeout(guard)
+      callback()
+    }
+
+    const child = execFile(adbPath, args, { timeout, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      settle(() => {
+        if (err) {
+          const reason = err.killed
+            ? `Command timed out after ${timeout}ms`
+            : err.message
+          const diagnostics = [
+            `ADB error: ${reason}`,
+            err.code !== undefined ? `code: ${err.code}` : '',
+            err.signal ? `signal: ${err.signal}` : '',
+            stderr.trim() ? `stderr: ${stderr.trim()}` : ''
+          ].filter(Boolean)
+          reject(new Error(diagnostics.join('\n')))
+          return
+        }
+        resolve(stdout.trim())
+      })
     })
+
+    // execFile 的 timeout 依赖子进程退出并关闭 stdio；adb 在部分平台会留下继承的
+    // 管道，导致回调迟迟不触发。这里再加一层硬超时，保证 Promise 一定会结束，
+    // 避免删除/复制任务永远停留在“正在删除/正在复制”。
+    guard = setTimeout(() => {
+      settle(() => {
+        try {
+          child.kill('SIGKILL')
+        } catch {
+          // 进程可能已经退出
+        }
+        reject(new Error(`ADB error: Command timed out after ${timeout}ms（进程无响应）`))
+      })
+    }, timeout + 2000)
   })
 }
 
@@ -757,6 +783,7 @@ export class AdbService extends EventEmitter {
   ): Promise<string[]> {
     const cleanPaths = remotePaths.map((p) => p.trim()).filter(Boolean)
     if (cleanPaths.length === 0) return []
+    console.log(`[delete] 开始: ${cleanPaths.length} 项`)
 
     const chunks: string[][] = []
     let current: string[] = []
@@ -790,6 +817,7 @@ export class AdbService extends EventEmitter {
       }
     })
     await Promise.all(workers)
+    console.log(`[delete] 完成: ${total - failed.length}/${total}${failed.length > 0 ? `，失败 ${failed.length}` : ''}`)
     return failed
   }
 
@@ -858,6 +886,7 @@ export class AdbService extends EventEmitter {
     if (!cleanDest.startsWith('/')) {
       return cleanPaths.map((path) => ({ path, error: '目标路径必须是绝对路径' }))
     }
+    console.log(`[relocate] ${mode === 'copy' ? '复制' : '移动'}开始: ${cleanPaths.length} 项 -> ${cleanDest}`)
 
     // 确保目标目录存在
     try {

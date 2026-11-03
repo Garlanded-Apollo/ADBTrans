@@ -1,6 +1,7 @@
 import { useState, useEffect, memo, useRef, useCallback } from 'react'
 import { Image } from 'lucide-react'
 import { useDeviceStore } from '@/stores/deviceStore'
+import { getImageMimeType, hasImageSignature } from '@/lib/image'
 
 interface ThumbnailProps {
   path: string
@@ -56,21 +57,18 @@ export const Thumbnail = memo(function Thumbnail({ path, name }: ThumbnailProps)
     let cancelled = false
     setLoading(true)
     setError(false)
+    setSrc(null)
 
     const loadThumbnail = async (): Promise<void> => {
       try {
         const base64 = await window.api.getFileBase64(current.serial, path)
         if (!cancelled && mountedRef.current) {
-          const ext = name.split('.').pop()?.toLowerCase() || ''
-          const mimeMap: Record<string, string> = {
-            jpg: 'image/jpeg',
-            jpeg: 'image/jpeg',
-            png: 'image/png',
-            gif: 'image/gif',
-            webp: 'image/webp',
-            bmp: 'image/bmp'
+          // 后缀是 .jpg 不代表内容真的是图片，文件头不匹配时直接退回普通图标
+          if (!hasImageSignature(base64)) {
+            setError(true)
+            return
           }
-          const mimeType = mimeMap[ext] || 'application/octet-stream'
+          const mimeType = getImageMimeType(name) || 'application/octet-stream'
           setSrc(`data:${mimeType};base64,${base64}`)
         }
       } catch {
@@ -118,11 +116,15 @@ export const Thumbnail = memo(function Thumbnail({ path, name }: ThumbnailProps)
   }
 
   return (
-    <div ref={containerRef} className="h-8 w-8 shrink-0">
+    <div ref={containerRef} className="h-8 w-8 shrink-0 overflow-hidden rounded">
       <img
         src={src}
-        alt={name}
-        className="h-8 w-8 shrink-0 rounded object-cover"
+        alt=""
+        onError={() => {
+          setSrc(null)
+          setError(true)
+        }}
+        className="block h-8 w-8 shrink-0 rounded object-cover"
       />
     </div>
   )

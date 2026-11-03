@@ -14,6 +14,7 @@ import { matchesAnyKeyword, parseSearchKeywords } from '@/lib/searchKeywords'
 
 const INITIAL_BATCH = 50
 const LOAD_MORE_BATCH = 30
+const DELETE_PREVIEW_LIMIT = 100
 
 type RelocateMode = 'copy' | 'move'
 
@@ -130,6 +131,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const [renameTarget, setRenameTarget] = useState<FileItem | null>(null)
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteTargets, setDeleteTargets] = useState<FileItem[]>([])
   const [relocateInput, setRelocateInput] = useState<{ mode: RelocateMode; files: FileItem[] } | null>(null)
   const [relocateConflicts, setRelocateConflicts] = useState<{ mode: RelocateMode; files: FileItem[]; dest: string; conflicts: string[] } | null>(null)
   const [relocateFailures, setRelocateFailures] = useState<{ mode: RelocateMode; message: string; items: string[] } | null>(null)
@@ -171,6 +173,16 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
 
   const displayedFiles = useMemo(() => sortedFiles.slice(0, displayCount), [sortedFiles, displayCount])
   const hasMore = displayCount < sortedFiles.length
+
+  const deleteMessage = useMemo(() => {
+    if (deleteTargets.length === 0) return ''
+    const total = deleteTargets.length
+    const names = deleteTargets.slice(0, DELETE_PREVIEW_LIMIT).map((file) => file.name)
+    const overflowNote = total > DELETE_PREVIEW_LIMIT
+      ? `\n（仅列出前 ${DELETE_PREVIEW_LIMIT} 项）`
+      : ''
+    return `确定要删除以下 ${total} 项吗？${overflowNote}\n\n${names.join('\n')}`
+  }, [deleteTargets])
 
   const filteredPaths = useMemo(() => filteredFiles.map((f) => f.path), [filteredFiles])
   const allChecked = filteredPaths.length > 0 && filteredPaths.every((p) => checkedPaths.has(p))
@@ -387,36 +399,34 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
         : []
 
     if (targetFiles.length === 0) return
+    setDeleteTargets(targetFiles)
     setDeleteConfirmOpen(true)
   }, [current?.serial, selected, checkedPaths, files])
 
   const confirmDelete = useCallback(async () => {
     if (!current?.serial) return
     setDeleteConfirmOpen(false)
+    setDeleteTargets([])
 
-    const targetFiles = checkedPaths.size > 0
-      ? files.filter((f) => checkedPaths.has(f.path))
-      : selected
-        ? [selected]
-        : []
-
+    const targetFiles = deleteTargets
     if (targetFiles.length === 0) return
 
+    const paths = targetFiles.map((f) => f.path)
     const queue = useQueueStore.getState()
     queue.startOperation('delete', targetFiles.length)
 
     let failed: string[] = []
     try {
-      failed = await window.api.deletePaths(current.serial, targetFiles.map((f) => f.path))
+      failed = await window.api.deletePaths(current.serial, paths)
     } catch (err) {
       console.error('Delete failed:', err)
-      failed = targetFiles.map((f) => f.path)
+      failed = paths
     } finally {
-      queue.finishOperation()
+      queue.finishOperation('delete', targetFiles.length)
     }
     const failedSet = new Set(failed)
-    useFileStore.getState().removeFilesFromList(targetFiles.map((f) => f.path).filter((p) => !failedSet.has(p)))
-  }, [current?.serial, selected, checkedPaths, files])
+    useFileStore.getState().removeFilesFromList(paths.filter((p) => !failedSet.has(p)))
+  }, [current?.serial, deleteTargets])
 
   const handleDownload = useCallback(async () => {
     setContextMenu(null)
@@ -516,7 +526,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       console.error('Relocate failed:', err)
       failures = targetFiles.map((f) => ({ path: f.path, error: err instanceof Error ? err.message : String(err) }))
     } finally {
-      queue.finishOperation()
+      queue.finishOperation(mode, targetFiles.length)
     }
 
     // 移动后源目录内容发生变化，刷新当前目录
@@ -967,18 +977,14 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
       <ConfirmDialog
         open={deleteConfirmOpen}
         title="确认删除"
-        message={(() => {
-          const targetFiles = checkedPaths.size > 0
-            ? files.filter((f) => checkedPaths.has(f.path))
-            : selected
-              ? [selected]
-              : []
-          return `确定要删除以下文件吗？\n\n${targetFiles.map((f) => f.name).join('\n')}`
-        })()}
+        message={deleteMessage}
         confirmLabel="删除"
         destructive
         onConfirm={confirmDelete}
-        onCancel={() => setDeleteConfirmOpen(false)}
+        onCancel={() => {
+          setDeleteConfirmOpen(false)
+          setDeleteTargets([])
+        }}
       />
       <InputDialog
         open={!!relocateInput}
