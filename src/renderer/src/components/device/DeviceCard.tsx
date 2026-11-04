@@ -73,20 +73,30 @@ export function DeviceCard({ onOpenWifiDialog }: DeviceCardProps): JSX.Element {
       return
     }
     let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
     setStats(null)
+
     const load = async (): Promise<void> => {
       try {
         const result = await window.api.getDeviceStats(statsSerial)
-        if (!cancelled) setStats(result)
+        if (!cancelled) {
+          // 单次 df 读取失败时保留上一次的数值，避免 ROM/内存信息闪一下消失
+          setStats((prev) => ({
+            storage: result.storage ?? prev?.storage ?? null,
+            memory: result.memory ?? prev?.memory ?? null
+          }))
+        }
       } catch {
-        if (!cancelled) setStats(null)
+        // 瞬时失败不清空已有数据，下一轮会继续重试
+      } finally {
+        if (!cancelled) timer = setTimeout(load, STATS_REFRESH_INTERVAL)
       }
     }
+
     load()
-    const timer = setInterval(load, STATS_REFRESH_INTERVAL)
     return () => {
       cancelled = true
-      clearInterval(timer)
+      if (timer) clearTimeout(timer)
     }
   }, [statsSerial])
 

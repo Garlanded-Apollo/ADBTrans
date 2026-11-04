@@ -272,15 +272,24 @@ function parseDfDataLine(output: string): DeviceStats['storage'] {
     if (!line || line.startsWith('Filesystem')) continue
     const parts = line.split(/\s+/)
     // Filesystem 1K-blocks Used Available Use%/Capacity Mounted on
-    if (parts.length < 6) continue
+    if (parts.length < 4) continue
     const mount = parts[parts.length - 1]
     // 部分机型 df /data 显示挂载点为 /data/user/0 等
     if (mount !== '/data' && !mount.startsWith('/data/')) continue
-    const totalKB = dfValueToKB(parts[1])
-    const usedKB = dfValueToKB(parts[2])
-    const freeKB = dfValueToKB(parts[3])
-    if (Number.isFinite(totalKB) && Number.isFinite(freeKB) && totalKB > 0) {
-      return { totalKB, usedKB, freeKB }
+
+    // 部分 ROM 会在 Filesystem 后多一列 Type，或把 Used 显示为 "-"，
+    // 因此从前往后找第一组可解析的 total/used/avail，而不是固定取 columns 1-3。
+    for (let i = 1; i <= parts.length - 3; i++) {
+      const totalKB = dfValueToKB(parts[i])
+      const usedKB = dfValueToKB(parts[i + 1])
+      const freeKB = dfValueToKB(parts[i + 2])
+      if (Number.isFinite(totalKB) && Number.isFinite(freeKB) && totalKB > 0) {
+        return {
+          totalKB,
+          usedKB: Number.isFinite(usedKB) ? usedKB : Math.max(0, totalKB - freeKB),
+          freeKB
+        }
+      }
     }
   }
   return null
@@ -345,11 +354,26 @@ export class AdbService extends EventEmitter {
 
   async getDeviceStats(serial: string): Promise<DeviceStats> {
     const [dfOutput, meminfoOutput] = await Promise.all([
-      execAdb(['-s', serial, 'shell', 'df', '/data'], 10000).catch(() => ''),
+      execAdb(['-s', serial, 'shell', 'df', '-k', '/data'], 15000).catch(() => ''),
       execAdb(['-s', serial, 'shell', 'cat', '/proc/meminfo'], 10000).catch(() => '')
     ])
+
+    let storage = parseDfDataLine(dfOutput)
+    let rawOutput = dfOutput
+
+    if (!storage && dfOutput.trim()) {
+      // df /data 返回了内容但格式不认识时，退化为列出全部挂载点再找 /data
+      const allOutput = await execAdb(['-s', serial, 'shell', 'df', '-k'], 15000).catch(() => '')
+      rawOutput = allOutput || dfOutput
+      storage = parseDfDataLine(allOutput)
+    }
+
+    if (!storage && rawOutput.trim()) {
+      console.warn(`[device-stats] 无法解析 /data 容量，df 输出: ${rawOutput.slice(0, 1200).replace(/\s+/g, ' ')}`)
+    }
+
     return {
-      storage: parseDfDataLine(dfOutput),
+      storage,
       memory: parseMeminfo(meminfoOutput)
     }
   }
@@ -826,21 +850,29 @@ export class AdbService extends EventEmitter {
    * Returns the subset that exists, in input order.
    */
   async pathsExist(serial: string, paths: string[]): Promise<string[]> {
-    const existing: string[] = []
+    const existing = new Set<string>()
+    let nextIndex = 0
     const workers = Array.from({ length: Math.min(3, paths.length) }, async () => {
-      let nextIndex = 0
       while (nextIndex < paths.length) {
         const path = paths[nextIndex++]
         try {
           await execAdb(['-s', serial, 'shell', `[ -e ${shellQuote(path)} ]`], 10000)
-          existing.push(path)
+          existing.add(path)
         } catch {
           /* path does not exist */
         }
       }
     })
     await Promise.all(workers)
-    return existing
+    const found: string[] = []
+    const added = new Set<string>()
+    for (const path of paths) {
+      if (existing.has(path) && !added.has(path)) {
+        added.add(path)
+        found.push(path)
+      }
+    }
+    return found
   }
 
   private getRelocateTarget(dest: string, src: string): string {

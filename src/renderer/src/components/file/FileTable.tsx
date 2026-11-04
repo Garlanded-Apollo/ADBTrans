@@ -142,7 +142,8 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressTriggeredRef = useRef(false)
   const lastClickIndexRef = useRef<number | null>(null)
-  const loadMoreRef = useRef<HTMLDivElement>(null)
+  const loadMoreRef = useRef<HTMLButtonElement>(null)
+  const loadMoreAtRef = useRef(0)
   const lastSearchedKeywordRef = useRef<string>('')
 
   const localSearchKeywords = useMemo(() => parseSearchKeywords(keyword), [keyword])
@@ -285,21 +286,41 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
   }, [searchContextMenu])
 
   useEffect(() => {
+    setDisplayCount(INITIAL_BATCH)
+  }, [currentPath])
+
+  const requestMore = useCallback(() => {
+    // IntersectionObserver 和滚动监听可能同时触发，统一节流避免一次加载两批
+    const now = Date.now()
+    if (now - loadMoreAtRef.current < 200) return
+    loadMoreAtRef.current = now
+    setDisplayCount((prev) => prev + LOAD_MORE_BATCH)
+  }, [])
+
+  useEffect(() => {
     const el = loadMoreRef.current
     if (!el || !hasMore) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          setDisplayCount((prev) => prev + LOAD_MORE_BATCH)
-        }
+        if (entry.isIntersecting) requestMore()
       },
       { rootMargin: '200px' }
     )
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [hasMore])
+    // displayCount 变化后需要重新观察，否则哨兵一直在视口内时只会触发一次
+  }, [hasMore, displayCount, sortedFiles.length, requestMore])
+
+  const handleTableScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    if (!hasMore) return
+    const el = event.currentTarget
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 240) return
+
+    // 除了 IntersectionObserver，再监听滚动作为兜底，避免某些布局下哨兵不触发
+    requestMore()
+  }, [hasMore, requestMore])
 
   const enableCheckboxes = useCallback((): void => {
     if (!showCheckboxes) setShowCheckboxes(true)
@@ -785,7 +806,7 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
           )}
         </div>
       ) : (
-      <div className="flex-1 overflow-x-hidden overflow-y-auto">
+      <div className="flex-1 overflow-x-hidden overflow-y-auto" onScroll={handleTableScroll}>
         <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
           <thead className="sticky top-0 z-10 bg-background">
             <tr className="border-b">
@@ -889,8 +910,15 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
             {hasMore && (
               <tr>
                 <td colSpan={columns.length + (showCheckboxes ? 1 : 0)}>
-                  <div ref={loadMoreRef} className="py-2 text-center text-xs text-muted-foreground">
-                    加载更多...
+                  <div className="py-2 text-center">
+                    <button
+                      type="button"
+                      ref={loadMoreRef}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      onClick={requestMore}
+                    >
+                      加载更多（已显示 {displayedFiles.length}/{sortedFiles.length}）
+                    </button>
                   </div>
                 </td>
               </tr>
