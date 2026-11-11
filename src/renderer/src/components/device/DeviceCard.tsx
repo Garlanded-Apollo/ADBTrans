@@ -192,8 +192,8 @@ export function DeviceCard({ onOpenWifiDialog }: DeviceCardProps): JSX.Element {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium truncate">{d.model || d.serial}</div>
-              <div className="text-[10px] text-muted-foreground truncate">
+              <div className="text-xs font-medium truncate" data-i18n-ignore>{d.model || d.serial}</div>
+              <div className="text-[10px] text-muted-foreground truncate" data-i18n-ignore>
                 {d.model ? d.serial : STATE_LABEL[d.state] || ''}
               </div>
             </div>

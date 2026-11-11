@@ -155,11 +155,11 @@ function Nv21SizeForm({ extension, fileName, fileSize, initialDimensions, onSave
   )
 }
 
-function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }): JSX.Element {
+function InfoRow({ label, value, mono, ignore }: { label: string; value: string; mono?: boolean; ignore?: boolean }): JSX.Element {
   return (
     <div className="flex min-w-0 items-start gap-2">
       <span className="w-12 shrink-0 text-muted-foreground">{label}</span>
-      <span className={`min-w-0 flex-1 break-all ${mono ? 'font-mono' : ''}`}>{value}</span>
+      <span className={`min-w-0 flex-1 break-all ${mono ? 'font-mono' : ''}`} data-i18n-ignore={ignore ? '' : undefined}>{value}</span>
     </div>
   )
 }
@@ -173,8 +173,8 @@ function FileInfo({ file }: { file: { name: string; path: string; type: string; 
       </div>
       <Separator />
       <div className="space-y-2.5 text-xs leading-relaxed">
-        <InfoRow label="名称" value={file.name} />
-        <InfoRow label="路径" value={file.path} />
+        <InfoRow label="名称" value={file.name} ignore />
+        <InfoRow label="路径" value={file.path} ignore />
         <InfoRow label="类型" value={file.type === 'folder' ? '文件夹' : (file.name.split('.').pop()?.toUpperCase() || '--')} />
         <InfoRow label="大小" value={file.type === 'folder' ? '--' : formatBytes(file.size)} />
         <InfoRow label="修改时间" value={formatDate(file.modified)} />

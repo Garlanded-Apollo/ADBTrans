@@ -268,7 +268,7 @@ export function ScriptWorkspace({ onExit }: ScriptWorkspaceProps): JSX.Element {
               >
                 <FileCode2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium">{script.name}</span>
+                  <span className="block truncate text-xs font-medium" data-i18n-ignore>{script.name}</span>
                   <span className="block truncate text-[10px] text-muted-foreground">{platformLabel(script.platform)} · {script.source === 'imported' ? '已导入' : '自定义'}</span>
                 </span>
               </button>
@@ -331,7 +331,7 @@ export function ScriptWorkspace({ onExit }: ScriptWorkspaceProps): JSX.Element {
 
             <div className="h-48 shrink-0 overflow-auto border-t bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-200">
               {outputs.length === 0 ? <span className="text-zinc-500">运行输出将显示在这里</span> : outputs.map((entry) => (
-                <span key={entry.id} className={cn('whitespace-pre-wrap break-all', entry.stream === 'stderr' && 'text-red-400', entry.stream === 'system' && 'text-cyan-400')}>{entry.text}</span>
+                <span key={entry.id} className={cn('whitespace-pre-wrap break-all', entry.stream === 'stderr' && 'text-red-400', entry.stream === 'system' && 'text-cyan-400')} data-i18n-ignore>{entry.text}</span>
               ))}
               <div ref={outputEndRef} />
             </div>

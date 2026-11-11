@@ -58,8 +58,8 @@ export function SearchResults({ results, loading, searched, error, keyword, onNa
             <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           )}
           <div className="flex-1 min-w-0">
-            <div className="truncate font-medium">{item.name}</div>
-            <div className="truncate text-[10px] text-muted-foreground">{item.path}</div>
+            <div className="truncate font-medium" data-i18n-ignore>{item.name}</div>
+            <div className="truncate text-[10px] text-muted-foreground" data-i18n-ignore>{item.path}</div>
           </div>
           <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
         </div>

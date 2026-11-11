@@ -12,8 +12,10 @@ import { useDeviceStore } from '@/stores/deviceStore'
 import { useFileStore } from '@/stores/fileStore'
 import { initTransferListeners } from '@/stores/queueStore'
 import { useUpdateStore } from '@/stores/updateStore'
+import { useAutoTranslate } from '@/i18n/useAutoTranslate'
 
 function App(): JSX.Element {
+  useAutoTranslate()
   const { checkAdb, adbStatus, current } = useDeviceStore()
   const { loadCurrentPath, navigateTo } = useFileStore()
   const [wifiDialogOpen, setWifiDialogOpen] = useState(false)

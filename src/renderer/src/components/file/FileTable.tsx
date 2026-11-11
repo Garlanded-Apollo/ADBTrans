@@ -8,6 +8,7 @@ import { Thumbnail, isImageFile } from './Thumbnail'
 import { ContextMenu } from './ContextMenu'
 import { SearchResults } from './SearchResults'
 import { InputDialog } from '@/components/ui/input-dialog'
+import { RemotePathPickerDialog } from './RemotePathPickerDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { getBuiltInPreviewMode, getFileExtension, usePreviewPreferenceStore, type PreviewMode } from '@/stores/previewPreferenceStore'
 import { matchesAnyKeyword, parseSearchKeywords } from '@/lib/searchKeywords'
@@ -91,7 +92,7 @@ const columns: ColumnDef[] = [
         ) : (
           getFileIcon(item)
         )}
-        <span className="min-w-0 truncate">{item.name}</span>
+        <span className="min-w-0 truncate" data-i18n-ignore>{item.name}</span>
       </div>
     )
   },
@@ -566,22 +567,22 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
 
   const confirmRelocateInput = useCallback(async (destRaw: string) => {
     if (!current?.serial || !relocateInput) return
+    const input = relocateInput
+    setRelocateInput(null)
     const dest = destRaw.trim().replace(/\/+$/, '') || '/'
 
     if (!dest.startsWith('/')) {
-      setRelocateFailures({ mode: relocateInput.mode, message: '目标路径必须是手机上的绝对路径（以 / 开头）', items: [] })
-      setRelocateInput(null)
+      setRelocateFailures({ mode: input.mode, message: '目标路径必须是手机上的绝对路径（以 / 开头）', items: [] })
       return
     }
 
     if (dest === currentPath) {
-      setRelocateFailures({ mode: relocateInput.mode, message: '目标目录不能是当前目录', items: [] })
-      setRelocateInput(null)
+      setRelocateFailures({ mode: input.mode, message: '目标目录不能是当前目录', items: [] })
       return
     }
 
     // 检查目标目录是否存在同名文件，存在则需二次确认覆盖
-    const targets = relocateInput.files.map((f) => (dest === '/' ? `/${f.name}` : `${dest}/${f.name}`))
+    const targets = input.files.map((f) => (dest === '/' ? `/${f.name}` : `${dest}/${f.name}`))
     let conflicts: string[] = []
     try {
       conflicts = await window.api.pathsExist(current.serial, targets)
@@ -590,9 +591,9 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
     }
 
     if (conflicts.length > 0) {
-      setRelocateConflicts({ mode: relocateInput.mode, files: relocateInput.files, dest, conflicts })
+      setRelocateConflicts({ mode: input.mode, files: input.files, dest, conflicts })
     } else {
-      await runRelocate(relocateInput.mode, relocateInput.files, dest)
+      await runRelocate(input.mode, input.files, dest)
     }
   }, [current?.serial, currentPath, relocateInput, runRelocate])
 
@@ -1014,12 +1015,12 @@ export function FileTable({ onOpenFolder }: FileTableProps): JSX.Element {
           setDeleteTargets([])
         }}
       />
-      <InputDialog
+      <RemotePathPickerDialog
         open={!!relocateInput}
         title={relocateInput?.mode === 'move' ? '移动到' : '复制到'}
-        label="目标目录（手机上的绝对路径）"
-        placeholder="/sdcard/Download"
-        defaultValue={currentPath}
+        serial={current?.serial || null}
+        initialPath={currentPath}
+        confirmLabel={relocateInput?.mode === 'move' ? '移动到这里' : '复制到这里'}
         onConfirm={confirmRelocateInput}
         onCancel={() => setRelocateInput(null)}
       />

@@ -133,6 +133,7 @@ export function Sidebar({ onOpenWifiDialog, activeView, onViewChange }: SidebarP
                   className="flex flex-1 items-center gap-1.5 truncate cursor-default"
                   onClick={() => navigate(item.path)}
                   title={item.label}
+                  data-i18n-ignore
                 >
                   <FolderOpen className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{item.label}</span>

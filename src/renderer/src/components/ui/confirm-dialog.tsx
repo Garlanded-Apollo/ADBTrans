@@ -39,7 +39,7 @@ function MiddleEllipsisText({ value }: { value: string }): JSX.Element {
   const { head, tail } = splitNameForMiddleEllipsis(value)
 
   return (
-    <span className="flex min-w-0 max-w-full items-baseline font-mono text-xs" title={value}>
+    <span className="flex min-w-0 max-w-full items-baseline font-mono text-xs" title={value} data-i18n-ignore>
       <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{head}</span>
       {tail && <span className="shrink-0 whitespace-nowrap">{tail}</span>}
     </span>

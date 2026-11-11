@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileText,
   Info,
+  Languages,
   Loader2,
   RefreshCw
 } from 'lucide-react'
@@ -15,6 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useUpdateStore } from '@/stores/updateStore'
+import { setLanguage, useLanguage } from '@/i18n'
+import { cn } from '@/lib/utils'
 
 interface SettingsDialogProps {
   open: boolean
@@ -51,6 +54,7 @@ function formatBytes(bytes: number): string {
 }
 
 export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: SettingsDialogProps): JSX.Element {
+  const language = useLanguage()
   const [page, setPage] = useState<SettingsPage>('main')
   const [autoLaunch, setAutoLaunch] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -170,6 +174,36 @@ export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: Set
                     }`}
                   />
                 </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 py-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Languages className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">界面语言</div>
+                    <div className="text-xs text-muted-foreground">切换界面显示语言</div>
+                  </div>
+                </div>
+                <div className="flex shrink-0 rounded-md border p-0.5">
+                  <button
+                    className={cn(
+                      'rounded px-2 py-0.5 text-xs transition-colors',
+                      language === 'zh' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                    )}
+                    onClick={() => setLanguage('zh')}
+                  >
+                    中文
+                  </button>
+                  <button
+                    className={cn(
+                      'rounded px-2 py-0.5 text-xs transition-colors',
+                      language === 'en' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                    )}
+                    onClick={() => setLanguage('en')}
+                  >
+                    English
+                  </button>
+                </div>
               </div>
 
               <button
@@ -302,7 +336,7 @@ export function SettingsDialog({ open, onOpenChange, initialPage = 'main' }: Set
                   {updateInfo.releaseNotes && (
                     <div>
                       <div className="mb-1 text-xs font-medium">版本说明</div>
-                      <div className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-[11px] leading-relaxed text-muted-foreground">
+                      <div className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-[11px] leading-relaxed text-muted-foreground" data-i18n-ignore>
                         {updateInfo.releaseNotes}
                       </div>
                     </div>

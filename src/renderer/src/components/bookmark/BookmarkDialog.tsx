@@ -90,8 +90,8 @@ export function BookmarkDialog({ open, onOpenChange }: BookmarkDialogProps): JSX
                 <>
                   <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{bookmark.label}</div>
-                    <div className="text-xs text-muted-foreground truncate">{bookmark.path}</div>
+                    <div className="text-sm font-medium truncate" data-i18n-ignore>{bookmark.label}</div>
+                    <div className="text-xs text-muted-foreground truncate" data-i18n-ignore>{bookmark.path}</div>
                   </div>
                   <Button
                     variant="ghost"

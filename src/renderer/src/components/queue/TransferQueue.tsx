@@ -24,7 +24,7 @@ function TaskRow({ task }: { task: QueueTask }): JSX.Element {
           {isRunning && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
           {isDone && <CheckCircle2 className="h-3 w-3 text-green-500" />}
           {isError && <AlertCircle className="h-3 w-3 text-destructive" />}
-          <span className="truncate text-xs font-medium">{task.fileName}</span>
+          <span className="truncate text-xs font-medium" data-i18n-ignore>{task.fileName}</span>
           <span className={cn('shrink-0 rounded px-1 py-0.5 text-[10px] font-medium', task.direction === 'pull' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700')}>
             {task.direction === 'pull' ? '手机→电脑' : '电脑→手机'}
           </span>
@@ -39,7 +39,7 @@ function TaskRow({ task }: { task: QueueTask }): JSX.Element {
           </div>
         )}
         {isError && task.error && (
-          <div className="mt-0.5 text-[10px] text-destructive truncate" title={task.error}>{task.error}</div>
+          <div className="mt-0.5 text-[10px] text-destructive truncate" title={task.error} data-i18n-ignore>{task.error}</div>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -62,7 +62,7 @@ function OperationRow(): JSX.Element {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
-          <span className="truncate text-xs font-medium">{info.action} {operationState.fileName}</span>
+          <span className="truncate text-xs font-medium">{info.action} <span data-i18n-ignore>{operationState.fileName}</span></span>
           <span className={cn('shrink-0 rounded px-1 py-0.5 text-[10px] font-medium', info.badgeClass)}>{info.badge}</span>
         </div>
         <div className="mt-1 flex items-center gap-3">
